@@ -31,7 +31,7 @@ neural = [
     # build. Staying on 2.8 keeps audio IO pure-Python (soundfile) — needed for
     # voice cloning, which loads external audio. No system deps, Docker-friendly.
     "torch>=2.2,<2.9",
-    "torchaudio>=2.2,<2.9",   # imported by coqui-tts but not declared by it
+    "torchaudio>=2.2,<2.12",   # imported by coqui-tts but not declared by it
     "librosa>=0.10",
     "soundfile>=0.12",
 ]
