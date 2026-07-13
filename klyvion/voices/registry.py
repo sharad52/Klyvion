@@ -62,14 +62,12 @@ DEFAULT_PRESETS: dict[str, VoicePreset] = {
         name="boy",
         speaker="Craig Gutsy",
         pitch_semitones=3.0,
-        speed=1.05,
         description="Young male voice (pitch-shifted)",
     ),
     "girl": VoicePreset(
         name="girl",
         speaker="Daisy Studious",
         pitch_semitones=2.5,
-        speed=1.05,
         description="Young female voice (pitch-shifted)",
     ),
 }

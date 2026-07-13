@@ -45,14 +45,37 @@ def normalize_loudness(audio: np.ndarray, peak: float = 0.95) -> np.ndarray:
 
 
 def pitch_shift(audio: np.ndarray, sr: int, semitones: float) -> np.ndarray:
-    """Shift pitch without changing duration (librosa phase vocoder)."""
+    """Shift pitch by resampling (formant-shifting, artifact-free).
+
+    We deliberately avoid ``librosa.effects.pitch_shift``: that method is a
+    phase vocoder, which smears speech transients and adds a hollow,
+    reverberant "distant hall" echo — very audible on the pitched-up
+    ``boy``/``girl`` presets. Resampling instead speeds the waveform up (or
+    slows it down) and relabels it at the original sample rate, moving pitch
+    *and* formants together. That has no phase artifacts and yields a more
+    natural child-voice timbre.
+
+    The trade-off is duration: raising the pitch by ``ratio`` shortens the
+    clip to ``1 / ratio`` of its length (and vice-versa). For the small
+    child-voice shifts used here this reads as a slightly quicker delivery,
+    which suits the effect.
+
+    Args:
+        audio: Mono float32 samples in [-1, 1].
+        sr: Sample rate the clip is stored/played at.
+        semitones: Shift amount; positive raises pitch, negative lowers it.
+
+    Returns:
+        The pitch-shifted samples (a different length than the input),
+        intended to be saved/played back at the same ``sr``.
+    """
     if abs(semitones) < 1e-3:
         return audio
     import librosa
 
-    return librosa.effects.pitch_shift(audio, sr=sr, n_steps=semitones).astype(
-        np.float32
-    )
+    ratio = 2.0 ** (semitones / 12.0)
+    shifted = librosa.resample(audio, orig_sr=sr, target_sr=int(round(sr / ratio)))
+    return shifted.astype(np.float32)
 
 
 def apply_post_effects(
