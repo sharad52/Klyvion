@@ -1,0 +1,21 @@
+services:
+  klyvion:
+    build: .
+    image: klyvion:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"   # only nginx talks to it; not exposed publicly
+    volumes:
+      - klyvion-data:/data    # cloned voices persist across redeploys
+    environment:
+      KLYVION_MAX_TEXT_LEN: "500"
+      KLYVION_ENABLE_CLONING: "1"   # set 0 to run a synthesis-only demo
+      KLYVION_MAX_UPLOAD_MB: "15"
+      KLYVION_CORS_ORIGINS: "https://klyvion.sharadbhandari.com.np,https://sharadbhandari.com.np"
+    deploy:
+      resources:
+        limits:
+          memory: 7g
+
+volumes:
+  klyvion-data:
