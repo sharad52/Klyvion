@@ -26,7 +26,12 @@ dependencies = [
 # Neural engine with voice cloning (recommended)
 neural = [
     "coqui-tts>=0.24",        # maintained fork of Coqui TTS (XTTS v2)
-    "torch>=2.1",
+    # torch <2.9: from 2.9 torchaudio drops its soundfile/sox backends and routes
+    # all audio IO through torchcodec, which needs a system FFmpeg + ABI-matched
+    # build. Staying on 2.8 keeps audio IO pure-Python (soundfile) — needed for
+    # voice cloning, which loads external audio. No system deps, Docker-friendly.
+    "torch>=2.2,<2.9",
+    "torchaudio>=2.2,<2.9",   # imported by coqui-tts but not declared by it
     "librosa>=0.10",
     "soundfile>=0.12",
 ]
@@ -68,7 +73,24 @@ default-groups = ["local"]
 # resolver floats numpy too high and backtracks numba to an ancient 0.53 that
 # only supports Python <3.10 and fails to build. Keep numba modern; it in turn
 # constrains numpy to a compatible (<2.3) range.
-constraint-dependencies = ["numba>=0.59"]
+constraint-dependencies = [
+    "numba>=0.59",
+    # coqui-tts declares an unbounded transformers>=4.57 but its code imports
+    # isin_mps_friendly, which was removed in transformers 5.x. Cap below 5.0.
+    "transformers>=4.57,<5",
+]
+# Install the CPU-only torch build. The default PyPI torch pulls multi-GB CUDA
+# wheels; this project runs CPU synthesis (see deploy plan), so CPU is smaller
+# and faster. torch is pinned to PyTorch's CPU index below.
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchaudio = { index = "pytorch-cpu" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
