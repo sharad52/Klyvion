@@ -1,0 +1,42 @@
+name: Bug Report
+description: Something in Klyvion doesn't work as documented
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Clear description of the bug and what you expected instead.
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. klyvion say "..." --voice man
+        2. ...
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes:
+      label: Klyvion version
+      placeholder: "0.1.0 (klyvion --version)"
+    validations: { required: true }
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine
+      options: ["xtts", "pyttsx3", "other/custom"]
+    validations: { required: true }
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "OS, Python version, CPU/GPU"
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      render: shell

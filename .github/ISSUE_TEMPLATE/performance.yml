@@ -1,0 +1,23 @@
+name: Performance
+description: Report slow synthesis, high memory use, or latency issues
+title: "[perf]: "
+labels: ["performance"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What is slow?
+      description: Include the operation, input size, and observed vs expected time.
+    validations: { required: true }
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware
+      placeholder: "4 vCPU / 8 GB RAM / no GPU"
+    validations: { required: true }
+  - type: textarea
+    id: measurements
+    attributes:
+      label: Measurements
+      render: shell
+      placeholder: "time klyvion say ... / benchmark output"

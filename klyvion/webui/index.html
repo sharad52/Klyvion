@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Klyvion — text to speech &amp; voice cloning</title>
+<meta name="description" content="Open-source text-to-speech with voice cloning. Type text, pick a voice, get audio.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0e1220;          /* studio night */
+    --panel:#171c30;
+    --panel-2:#1d2340;
+    --line:#2a3154;
+    --text:#e8ebf7;
+    --muted:#8b93b8;
+    --ember:#ffb454;       /* molten metal */
+    --ember-deep:#ff8a3d;
+    --ok:#7ee2a8;
+    --err:#ff7d7d;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);color:var(--text);
+    font-family:'Inter',system-ui,sans-serif;font-size:16px;line-height:1.55;
+    min-height:100vh;
+  }
+  a{color:var(--ember);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:880px;margin:0 auto;padding:0 20px}
+
+  /* header */
+  header{padding:28px 0 8px}
+  .brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .brand h1{font-family:'Sora',sans-serif;font-weight:700;font-size:1.5rem;letter-spacing:-.02em}
+  .brand h1 .spark{color:var(--ember)}
+  .brand .tag{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--muted);
+    border:1px solid var(--line);border-radius:99px;padding:3px 10px}
+  header p{color:var(--muted);margin-top:8px;max-width:60ch}
+
+  /* hero waveform */
+  #wave{display:block;width:100%;height:96px;margin:22px 0 6px;border-radius:var(--radius);
+    background:linear-gradient(180deg,var(--panel) 0%,var(--panel-2) 100%);
+    border:1px solid var(--line)}
+
+  /* panels */
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px;margin:18px 0}
+  .panel h2{font-family:'Sora',sans-serif;font-size:1.02rem;font-weight:600;margin-bottom:14px}
+  .panel h2 .k{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--ember);
+    letter-spacing:.12em;display:block;margin-bottom:4px}
+
+  textarea{
+    width:100%;min-height:120px;resize:vertical;
+    background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;
+    padding:14px;font:inherit;
+  }
+  textarea:focus,input:focus,button:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
+  .counter{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--muted);
+    text-align:right;margin-top:6px}
+
+  /* voice chips */
+  .chips{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0 18px}
+  .chip{
+    background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    border-radius:99px;padding:9px 18px;font:inherit;font-size:.9rem;cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .chip[aria-pressed="true"]{border-color:var(--ember);background:rgba(255,180,84,.12);color:var(--ember)}
+  .chip:hover{border-color:var(--ember)}
+  .chip .sub{display:block;font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted)}
+
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .btn{
+    font-family:'Sora',sans-serif;font-weight:600;font-size:.95rem;cursor:pointer;
+    background:linear-gradient(135deg,var(--ember) 0%,var(--ember-deep) 100%);
+    color:#20150a;border:none;border-radius:10px;padding:12px 26px;
+    transition:transform .12s, filter .12s;
+  }
+  .btn:hover{filter:brightness(1.07)}
+  .btn:active{transform:translateY(1px)}
+  .btn[disabled]{opacity:.55;cursor:wait}
+  .btn.ghost{background:none;border:1px solid var(--line);color:var(--text)}
+  .status{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--muted)}
+  .status.ok{color:var(--ok)} .status.err{color:var(--err)}
+
+  audio{width:100%;margin-top:14px;display:none}
+  audio.show{display:block}
+
+  input[type=file],input[type=text]{
+    background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;
+    padding:11px 13px;font:inherit;width:100%;
+  }
+  label{display:block;font-size:.85rem;color:var(--muted);margin:12px 0 6px}
+  .hint{font-size:.8rem;color:var(--muted);margin-top:10px}
+
+  footer{padding:26px 0 40px;color:var(--muted);font-size:.85rem;
+    border-top:1px solid var(--line);margin-top:28px}
+  footer .row{justify-content:space-between}
+
+  @media (prefers-reduced-motion: reduce){ #wave{display:none} }
+  @media (max-width:560px){ .brand h1{font-size:1.25rem} .panel{padding:16px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="brand">
+    <h1>Kly<span class="spark">vion</span></h1>
+    <span class="tag">open-source TTS · v0.1</span>
+  </div>
+  <p>Type something, pick a voice, and get speech. Or upload a short recording
+     and create a voice of your own.</p>
+</header>
+
+<canvas id="wave" width="1600" height="192" aria-hidden="true"></canvas>
+
+<section class="panel" aria-labelledby="synth-h">
+  <h2 id="synth-h"><span class="k">01 · SPEAK</span>Text to speech</h2>
+
+  <textarea id="text" maxlength="1000"
+    placeholder="Type up to 1,000 characters…">Hello! This audio was generated by Klyvion, an open source text to speech engine.</textarea>
+  <div class="counter"><span id="count">0</span>/1000</div>
+
+  <div class="chips" id="chips" role="group" aria-label="Choose a voice"></div>
+
+  <div class="row">
+    <button class="btn" id="speak">Generate speech</button>
+    <span class="status" id="synth-status" role="status" aria-live="polite"></span>
+  </div>
+  <audio id="player" controls></audio>
+</section>
+
+<section class="panel" aria-labelledby="clone-h" id="clone-panel">
+  <h2 id="clone-h"><span class="k">02 · CLONE</span>Clone a voice</h2>
+  <p class="hint" style="margin-top:0">Upload 6–30 seconds of one person speaking
+     clearly — no music, no background noise. Only clone voices you have
+     permission to use.</p>
+
+  <label for="vname">Voice name</label>
+  <input type="text" id="vname" placeholder="e.g. sharad" maxlength="40"
+         pattern="[a-zA-Z0-9_\-]+">
+
+  <label for="vfile">Recording (WAV, MP3 or FLAC)</label>
+  <input type="file" id="vfile" accept=".wav,.mp3,.flac,audio/*">
+
+  <div class="row" style="margin-top:16px">
+    <button class="btn ghost" id="clone">Create voice</button>
+    <span class="status" id="clone-status" role="status" aria-live="polite"></span>
+  </div>
+</section>
+
+<footer>
+  <div class="row">
+    <span>Built by <a href="https://sharadbhandari.com.np">Sharad Bhandari</a></span>
+    <span><a href="https://github.com/sharad52/klyvion">Source on GitHub</a> · Apache-2.0</span>
+  </div>
+</footer>
+
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const API = "";           // same origin
+let voice = "woman";
+let audioCtx, analyser, srcNode;
+
+/* ---------- voice chips ---------- */
+async function loadVoices(){
+  try{
+    const res = await fetch(API + "/voices");
+    const voices = await res.json();
+    const box = $("#chips"); box.innerHTML = "";
+    for(const v of voices){
+      const b = document.createElement("button");
+      b.className = "chip"; b.type = "button";
+      b.setAttribute("aria-pressed", v.name === voice);
+      b.innerHTML = `${v.name}<span class="sub">${v.kind}</span>`;
+      b.onclick = () => { voice = v.name;
+        box.querySelectorAll(".chip").forEach(c=>c.setAttribute("aria-pressed","false"));
+        b.setAttribute("aria-pressed","true"); };
+      box.appendChild(b);
+    }
+  }catch(e){
+    $("#synth-status").textContent = "Could not reach the server.";
+    $("#synth-status").className = "status err";
+  }
+}
+
+/* ---------- synthesis ---------- */
+$("#text").addEventListener("input", e => $("#count").textContent = e.target.value.length);
+$("#count").textContent = $("#text").value.length;
+
+$("#speak").onclick = async () => {
+  const text = $("#text").value.trim();
+  const st = $("#synth-status"), btn = $("#speak");
+  if(!text){ st.textContent = "Type some text first."; st.className="status err"; return; }
+  btn.disabled = true; st.className = "status";
+  st.textContent = "Generating audio… (can take up to a minute on CPU)";
+  try{
+    const res = await fetch(API + "/synthesize", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ text, voice })
+    });
+    if(!res.ok){
+      const d = await res.json().catch(()=>({detail:res.statusText}));
+      throw new Error(d.detail || "Synthesis failed");
+    }
+    const blob = await res.blob();
+    const player = $("#player");
+    player.src = URL.createObjectURL(blob);
+    player.classList.add("show");
+    hookWave(player);
+    player.play().catch(()=>{});    // autoplay may be blocked; controls shown anyway
+    st.textContent = "Done — press play if it didn't start."; st.className = "status ok";
+  }catch(err){
+    st.textContent = err.message; st.className = "status err";
+  }finally{ btn.disabled = false; }
+};
+
+/* ---------- cloning ---------- */
+$("#clone").onclick = async () => {
+  const name = $("#vname").value.trim();
+  const file = $("#vfile").files[0];
+  const st = $("#clone-status"), btn = $("#clone");
+  if(!name || !/^[a-zA-Z0-9_\-]+$/.test(name)){
+    st.textContent = "Name: letters, digits, - or _ only."; st.className="status err"; return; }
+  if(!file){ st.textContent = "Choose a recording."; st.className="status err"; return; }
+  btn.disabled = true; st.className="status"; st.textContent = "Uploading & preparing sample…";
+  try{
+    const fd = new FormData();
+    fd.append("sample", file);
+    const res = await fetch(API + "/voices/" + encodeURIComponent(name), { method:"POST", body: fd });
+    if(!res.ok){
+      const d = await res.json().catch(()=>({detail:res.statusText}));
+      throw new Error(d.detail || "Cloning failed");
+    }
+    st.textContent = `Voice “${name}” created — select it above.`; st.className="status ok";
+    await loadVoices();
+  }catch(err){
+    st.textContent = err.message; st.className = "status err";
+  }finally{ btn.disabled = false; }
+};
+
+/* ---------- signature: live waveform ---------- */
+function hookWave(player){
+  if(matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  if(!audioCtx){
+    audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser(); analyser.fftSize = 512;
+    srcNode = audioCtx.createMediaElementSource(player);
+    srcNode.connect(analyser); analyser.connect(audioCtx.destination);
+    drawWave();
+  }
+  audioCtx.resume();
+}
+function drawWave(){
+  const c = $("#wave"), ctx = c.getContext("2d");
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  (function frame(){
+    requestAnimationFrame(frame);
+    analyser.getByteTimeDomainData(data);
+    ctx.clearRect(0,0,c.width,c.height);
+    const grad = ctx.createLinearGradient(0,0,c.width,0);
+    grad.addColorStop(0,"#ffb454"); grad.addColorStop(1,"#ff8a3d");
+    ctx.strokeStyle = grad; ctx.lineWidth = 3; ctx.beginPath();
+    const step = c.width / data.length;
+    for(let i=0;i<data.length;i++){
+      const y = (data[i]/255) * c.height;
+      i ? ctx.lineTo(i*step, y) : ctx.moveTo(0, y);
+    }
+    ctx.stroke();
+  })();
+}
+/* idle state: flat ember line */
+(function idle(){
+  const c = $("#wave"), ctx = c.getContext("2d");
+  ctx.strokeStyle = "#3a4270"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, c.height/2); ctx.lineTo(c.width, c.height/2); ctx.stroke();
+})();
+
+loadVoices();
+</script>
+</body>
+</html>
