@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "klyvion"
+version = "0.1.0"
+description = "Multi-voice text-to-speech toolkit with zero-shot voice cloning."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Klyvion Contributors" }]
+requires-python = ">=3.10"
+keywords = ["tts", "text-to-speech", "voice-cloning", "xtts", "speech-synthesis"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+# Neural engine with voice cloning (recommended)
+neural = [
+    "coqui-tts>=0.24",        # maintained fork of Coqui TTS (XTTS v2)
+    "torch>=2.1",
+    "librosa>=0.10",
+    "soundfile>=0.12",
+]
+# Lightweight offline fallback engine
+lite = ["pyttsx3>=2.90"]
+# HTTP API server
+server = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9"]
+dev = ["pytest>=8", "pytest-cov", "ruff", "black"]
+all = ["klyvion[neural,lite,server]"]
+
+[project.scripts]
+klyvion = "klyvion.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/sharad52/klyvion"
+Issues = "https://github.com/sharad52/klyvion/issues"
+
+[tool.setuptools.packages.find]
+include = ["klyvion*"]
+
+[tool.setuptools.package-data]
+klyvion = ["webui/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"

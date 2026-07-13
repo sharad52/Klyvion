@@ -199,3 +199,10 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+---
+
+NOTE ON MODEL LICENSING: The optional XTTS v2 model weights downloaded by the
+"neural" engine are licensed separately under the Coqui Public Model License
+(CPML), which restricts commercial use of the *model weights*. This Apache-2.0
+license applies to the Klyvion source code only. See README.md.
