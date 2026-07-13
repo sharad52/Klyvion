@@ -1,10 +1,13 @@
-.PHONY: install install-all test lint format typecheck check serve docker docker-up clean
+.PHONY: install install-lite install-pip test lint format typecheck check serve docker docker-up clean help
 
-install:            ## dev install (fast, no neural engine)
-	pip install -e ".[dev]" fastapi httpx python-multipart
+install:            ## one-shot full install into .venv (neural + server + dev) via uv
+	uv sync
 
-install-all:        ## full install with neural engine + server
-	pip install -e ".[all,dev]"
+install-lite:       ## fast install: offline engine + server + dev, NO neural model (via uv)
+	uv sync --no-default-groups --extra lite --extra server --group dev
+
+install-pip:        ## fallback if you don't use uv: full install with pip
+	python -m pip install -e ".[all,dev]"
 
 test:               ## run test suite
 	pytest -q

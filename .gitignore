@@ -4,7 +4,9 @@ __pycache__/
 build/
 dist/
 .venv/
+.venv*/
 venv/
+uv.lock
 outputs/
 *.wav
 !assets/reference_voices/*.wav

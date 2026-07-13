@@ -50,6 +50,26 @@ include = ["klyvion*"]
 [tool.setuptools.package-data]
 klyvion = ["webui/*.html"]
 
+# PEP 735 dependency groups — used by `uv sync` for the local dev environment.
+# The public install UX stays on extras above (`pip install klyvion[neural]`);
+# these groups only control what a bare `uv sync` pulls into `.venv`.
+[dependency-groups]
+dev = ["pytest>=8", "pytest-cov", "ruff", "black", "mypy"]
+# "local" = the full local environment: every engine + the server + dev tools.
+local = [
+    "klyvion[neural,lite,server]",
+    { include-group = "dev" },
+]
+
+[tool.uv]
+# A bare `uv sync` installs the full local environment (neural + server + dev).
+default-groups = ["local"]
+# librosa pulls numba transitively. With numpy's floor unbounded, the universal
+# resolver floats numpy too high and backtracks numba to an ancient 0.53 that
+# only supports Python <3.10 and fails to build. Keep numba modern; it in turn
+# constrains numpy to a compatible (<2.3) range.
+constraint-dependencies = ["numba>=0.59"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
