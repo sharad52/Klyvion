@@ -35,12 +35,18 @@
 
   /* header */
   header{padding:28px 0 8px}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
   .brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
   .brand h1{font-family:'Sora',sans-serif;font-weight:700;font-size:1.5rem;letter-spacing:-.02em}
   .brand h1 .spark{color:var(--ember)}
   .brand .tag{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--muted);
     border:1px solid var(--line);border-radius:99px;padding:3px 10px}
   header p{color:var(--muted);margin-top:8px;max-width:60ch}
+
+  /* auth bar */
+  #authbar{display:flex;align-items:center;gap:10px;font-size:.85rem}
+  #authbar .who{color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.78rem}
+  #authbar .who b{color:var(--text);font-weight:500}
 
   /* hero waveform */
   #wave{display:block;width:100%;height:96px;margin:22px 0 6px;border-radius:var(--radius);
@@ -85,18 +91,43 @@
   .btn:active{transform:translateY(1px)}
   .btn[disabled]{opacity:.55;cursor:wait}
   .btn.ghost{background:none;border:1px solid var(--line);color:var(--text)}
+  .btn.sm{padding:8px 16px;font-size:.85rem}
   .status{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--muted)}
   .status.ok{color:var(--ok)} .status.err{color:var(--err)}
 
   audio{width:100%;margin-top:14px;display:none}
   audio.show{display:block}
 
-  input[type=file],input[type=text]{
+  input[type=file],input[type=text],input[type=password]{
     background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;
     padding:11px 13px;font:inherit;width:100%;
   }
   label{display:block;font-size:.85rem;color:var(--muted);margin:12px 0 6px}
   .hint{font-size:.8rem;color:var(--muted);margin-top:10px}
+
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(5,7,15,.72);backdrop-filter:blur(3px);
+    display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
+  .overlay.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    width:100%;max-width:400px;padding:26px;position:relative}
+  .modal h3{font-family:'Sora',sans-serif;font-size:1.15rem;margin-bottom:4px}
+  .modal .lead{color:var(--muted);font-size:.85rem;margin-bottom:18px}
+  .modal .close{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);
+    font-size:1.4rem;line-height:1;cursor:pointer}
+  .tabs{display:flex;gap:8px;margin-bottom:16px}
+  .tabs button{flex:1;background:var(--panel-2);border:1px solid var(--line);color:var(--muted);
+    border-radius:10px;padding:9px;font:inherit;font-size:.85rem;cursor:pointer}
+  .tabs button[aria-selected="true"]{color:var(--ember);border-color:var(--ember);
+    background:rgba(255,180,84,.1)}
+  .divider{display:flex;align-items:center;gap:12px;color:var(--muted);
+    font-size:.72rem;margin:18px 0;font-family:'JetBrains Mono',monospace}
+  .divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--line)}
+  .btn.google{background:#fff;color:#1f1f1f;display:flex;align-items:center;justify-content:center;
+    gap:10px;width:100%;font-family:'Inter',sans-serif;font-weight:500}
+  .btn.google svg{width:18px;height:18px}
+  #google-wrap{display:none}
+  #google-wrap.show{display:block}
 
   footer{padding:26px 0 40px;color:var(--muted);font-size:.85rem;
     border-top:1px solid var(--line);margin-top:28px}
@@ -110,12 +141,16 @@
 <div class="wrap">
 
 <header>
-  <div class="brand">
-    <h1>Kly<span class="spark">vion</span></h1>
-    <span class="tag">open-source TTS · v0.1</span>
+  <div class="topbar">
+    <div class="brand">
+      <h1>Kly<span class="spark">vion</span></h1>
+      <span class="tag">open-source TTS · v0.1</span>
+    </div>
+    <div id="authbar"><!-- filled by JS --></div>
   </div>
   <p>Type something, pick a voice, and get speech. Or upload a short recording
-     and create a voice of your own.</p>
+     and create a voice of your own. Generating and previewing is free — log in
+     to download the audio file.</p>
 </header>
 
 <canvas id="wave" width="1600" height="192" aria-hidden="true"></canvas>
@@ -131,6 +166,7 @@
 
   <div class="row">
     <button class="btn" id="speak">Generate speech</button>
+    <button class="btn ghost" id="download" style="display:none">Download WAV</button>
     <span class="status" id="synth-status" role="status" aria-live="polite"></span>
   </div>
   <audio id="player" controls></audio>
@@ -164,11 +200,136 @@
 
 </div>
 
+<!-- ---------- auth modal ---------- -->
+<div class="overlay" id="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+  <div class="modal">
+    <button class="close" id="auth-close" aria-label="Close">×</button>
+    <h3 id="auth-title">Log in</h3>
+    <p class="lead" id="auth-lead">Log in to download your generated audio.</p>
+
+    <div class="tabs" role="tablist">
+      <button id="tab-login" role="tab" aria-selected="true">Log in</button>
+      <button id="tab-register" role="tab" aria-selected="false">Sign up</button>
+    </div>
+
+    <form id="auth-form">
+      <label for="au-user">Username</label>
+      <input type="text" id="au-user" autocomplete="username" maxlength="64"
+             pattern="[a-zA-Z0-9_\-@.]+" required>
+      <label for="au-pass">Password</label>
+      <input type="password" id="au-pass" autocomplete="current-password"
+             minlength="8" maxlength="128" required>
+      <div class="row" style="margin-top:16px">
+        <button class="btn" type="submit" id="auth-submit">Log in</button>
+        <span class="status" id="auth-status" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+
+    <div id="google-wrap">
+      <div class="divider">or</div>
+      <a class="btn google" id="google-btn" href="/auth/google/login">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Continue with Google
+      </a>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = s => document.querySelector(s);
 const API = "";           // same origin
 let voice = "woman";
+let currentUser = null;
+let lastDownloadUrl = null;
+let authMode = "login";   // or "register"
 let audioCtx, analyser, srcNode;
+
+/* ---------- auth ---------- */
+async function refreshAuth(){
+  try{
+    const res = await fetch(API + "/auth/me", { credentials:"include" });
+    currentUser = res.ok ? (await res.json()).user : null;
+  }catch(e){ currentUser = null; }
+  renderAuthbar();
+}
+
+function renderAuthbar(){
+  const bar = $("#authbar");
+  if(currentUser){
+    bar.innerHTML =
+      `<span class="who">signed in as <b></b></span>
+       <button class="btn ghost sm" id="logout">Log out</button>`;
+    bar.querySelector("b").textContent = currentUser.display_name || currentUser.username;
+    $("#logout").onclick = logout;
+  }else{
+    bar.innerHTML = `<button class="btn ghost sm" id="open-login">Log in / Sign up</button>`;
+    $("#open-login").onclick = () => openAuth();
+  }
+}
+
+async function loadAuthConfig(){
+  try{
+    const res = await fetch(API + "/auth/config");
+    const cfg = await res.json();
+    if(cfg.google_enabled) $("#google-wrap").classList.add("show");
+  }catch(e){ /* Google stays hidden */ }
+}
+
+function openAuth(lead){
+  $("#auth-status").textContent = "";
+  if(lead) $("#auth-lead").textContent = lead;
+  setAuthMode("login");
+  $("#auth-overlay").classList.add("show");
+  $("#au-user").focus();
+}
+function closeAuth(){ $("#auth-overlay").classList.remove("show"); }
+
+function setAuthMode(mode){
+  authMode = mode;
+  const login = mode === "login";
+  $("#tab-login").setAttribute("aria-selected", login);
+  $("#tab-register").setAttribute("aria-selected", !login);
+  $("#auth-title").textContent = login ? "Log in" : "Create an account";
+  $("#auth-submit").textContent = login ? "Log in" : "Sign up";
+  $("#au-pass").autocomplete = login ? "current-password" : "new-password";
+}
+
+$("#tab-login").onclick = () => setAuthMode("login");
+$("#tab-register").onclick = () => setAuthMode("register");
+$("#auth-close").onclick = closeAuth;
+$("#auth-overlay").onclick = e => { if(e.target.id === "auth-overlay") closeAuth(); };
+document.addEventListener("keydown", e => { if(e.key === "Escape") closeAuth(); });
+
+$("#auth-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const username = $("#au-user").value.trim();
+  const password = $("#au-pass").value;
+  const st = $("#auth-status"), btn = $("#auth-submit");
+  btn.disabled = true; st.className = "status"; st.textContent = "Working…";
+  try{
+    const res = await fetch(API + "/auth/" + (authMode === "login" ? "login" : "register"), {
+      method:"POST", credentials:"include",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ username, password })
+    });
+    if(!res.ok){
+      const d = await res.json().catch(()=>({detail:res.statusText}));
+      throw new Error(d.detail || "Authentication failed");
+    }
+    currentUser = (await res.json()).user;
+    renderAuthbar();
+    closeAuth();
+    if(lastDownloadUrl) triggerDownload(lastDownloadUrl);   // resume what they wanted
+  }catch(err){
+    st.textContent = err.message; st.className = "status err";
+  }finally{ btn.disabled = false; }
+});
+
+async function logout(){
+  try{ await fetch(API + "/auth/logout", { method:"POST", credentials:"include" }); }
+  catch(e){ /* ignore */ }
+  currentUser = null; renderAuthbar();
+}
 
 /* ---------- voice chips ---------- */
 async function loadVoices(){
@@ -202,6 +363,7 @@ $("#speak").onclick = async () => {
   if(!text){ st.textContent = "Type some text first."; st.className="status err"; return; }
   btn.disabled = true; st.className = "status";
   st.textContent = "Generating audio… (can take up to a minute on CPU)";
+  $("#download").style.display = "none"; lastDownloadUrl = null;
   try{
     const res = await fetch(API + "/synthesize", {
       method:"POST", headers:{"Content-Type":"application/json"},
@@ -211,17 +373,47 @@ $("#speak").onclick = async () => {
       const d = await res.json().catch(()=>({detail:res.statusText}));
       throw new Error(d.detail || "Synthesis failed");
     }
-    const blob = await res.blob();
+    const { preview_url, download_url } = await res.json();
+    lastDownloadUrl = download_url;
     const player = $("#player");
-    player.src = URL.createObjectURL(blob);
+    player.src = API + preview_url;
     player.classList.add("show");
     hookWave(player);
     player.play().catch(()=>{});    // autoplay may be blocked; controls shown anyway
-    st.textContent = "Done — press play if it didn't start."; st.className = "status ok";
+    $("#download").style.display = "";
+    st.textContent = "Done — press play, or download the file."; st.className = "status ok";
   }catch(err){
     st.textContent = err.message; st.className = "status err";
   }finally{ btn.disabled = false; }
 };
+
+/* ---------- gated download ---------- */
+$("#download").onclick = () => { if(lastDownloadUrl) triggerDownload(lastDownloadUrl); };
+
+async function triggerDownload(url){
+  const st = $("#synth-status");
+  try{
+    const res = await fetch(API + url, { credentials:"include" });
+    if(res.status === 401){
+      openAuth("Log in to download this audio.");
+      return;
+    }
+    if(!res.ok){
+      const d = await res.json().catch(()=>({detail:res.statusText}));
+      throw new Error(d.detail || "Download failed");
+    }
+    const blob = await res.blob();
+    const name = url.split("/").pop() + ".wav";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    st.textContent = "Downloaded " + name; st.className = "status ok";
+  }catch(err){
+    st.textContent = err.message; st.className = "status err";
+  }
+}
 
 /* ---------- cloning ---------- */
 $("#clone").onclick = async () => {
@@ -284,7 +476,18 @@ function drawWave(){
   ctx.beginPath(); ctx.moveTo(0, c.height/2); ctx.lineTo(c.width, c.height/2); ctx.stroke();
 })();
 
+/* ---------- boot ---------- */
+(function showAuthError(){
+  const err = new URLSearchParams(location.search).get("auth_error");
+  if(err){
+    const st = $("#synth-status");
+    st.textContent = decodeURIComponent(err); st.className = "status err";
+    history.replaceState(null, "", location.pathname);
+  }
+})();
 loadVoices();
+loadAuthConfig();
+refreshAuth();
 </script>
 </body>
 </html>

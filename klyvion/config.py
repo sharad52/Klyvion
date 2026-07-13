@@ -28,6 +28,18 @@ class Settings:
         sample_rate: output sample rate in Hz.
         device: "auto", "cpu" or "cuda".
         language: default language code for the neural engine.
+        secret_key: HMAC secret used to sign session tokens. If empty, the
+            server generates an ephemeral key at startup (sessions will not
+            survive a restart) and logs a warning.
+        google_client_id: OAuth 2.0 client ID for "Log in with Google". When
+            either Google credential is empty, Google login is disabled and the
+            web UI hides its button.
+        google_client_secret: OAuth 2.0 client secret paired with
+            ``google_client_id``.
+        token_ttl_hours: lifetime of an issued session token, in hours.
+        public_base_url: externally reachable base URL (e.g.
+            ``https://klyvion.example.com``) used to build the Google OAuth
+            redirect URI. If empty, it is derived from the incoming request.
     """
 
     engine: str = field(default_factory=lambda: _env("ENGINE", "xtts"))
@@ -40,10 +52,31 @@ class Settings:
     sample_rate: int = field(default_factory=lambda: int(_env("SAMPLE_RATE", "24000")))
     device: str = field(default_factory=lambda: _env("DEVICE", "auto"))
     language: str = field(default_factory=lambda: _env("LANGUAGE", "en"))
+    secret_key: str = field(default_factory=lambda: _env("SECRET_KEY", ""))
+    google_client_id: str = field(default_factory=lambda: _env("GOOGLE_CLIENT_ID", ""))
+    google_client_secret: str = field(
+        default_factory=lambda: _env("GOOGLE_CLIENT_SECRET", "")
+    )
+    token_ttl_hours: int = field(
+        default_factory=lambda: int(_env("TOKEN_TTL_HOURS", "168"))
+    )
+    public_base_url: str = field(
+        default_factory=lambda: _env("PUBLIC_BASE_URL", "").rstrip("/")
+    )
 
     @property
     def voices_dir(self) -> Path:
         return self.data_dir / "voices"
+
+    @property
+    def users_file(self) -> Path:
+        """JSON file where local-account and linked-Google users persist."""
+        return self.data_dir / "users.json"
+
+    @property
+    def google_enabled(self) -> bool:
+        """True when both Google OAuth credentials are configured."""
+        return bool(self.google_client_id and self.google_client_secret)
 
     def ensure_dirs(self) -> None:
         self.voices_dir.mkdir(parents=True, exist_ok=True)

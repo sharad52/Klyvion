@@ -17,7 +17,8 @@ appears, it's a bug.
 
 ## Current status (v0.1.0)
 
-- ✅ 16/16 pytest tests passing (fast; no model download needed — uses a FakeEngine)
+- ✅ 27/27 pytest tests passing (fast; no model download needed — uses a FakeEngine).
+  The 11 auth tests skip cleanly if the `server` extra isn't installed.
 - ✅ CLI, Python API, and FastAPI HTTP server all working
 - ✅ Web UI bundled and served at `/` by the API server
 - ✅ English only (by design); 16 more languages pre-registered but disabled
@@ -43,7 +44,13 @@ klyvion/
 │   │   ├── registry.py        # presets man/woman/boy/girl + custom voices (JSON persisted)
 │   │   └── cloning.py         # validates/cleans uploaded samples (6–30 s)
 │   ├── audio/processing.py    # librosa/soundfile: resample, trim, normalize, pitch shift
-│   ├── api/server.py          # FastAPI app (create_app factory)
+│   ├── auth/                  # download-gating auth (username/password + Google OAuth)
+│   │   ├── service.py         # AuthService facade (register/login/google/tokens)
+│   │   ├── store.py           # UserStore ABC + JsonUserStore (data_dir/users.json)
+│   │   ├── passwords.py       # bcrypt hashing; tokens.py: HS256 session JWT
+│   │   ├── google.py          # Authlib OpenID Connect client (optional)
+│   │   └── router.py          # /auth/* endpoints + get_current_user dependency
+│   ├── api/server.py          # FastAPI app (create_app factory; injectable Klyvion)
 │   └── webui/index.html       # single-file web UI (dark studio theme, ember accent,
 │                              #   live waveform via Web Audio API)
 ├── tests/                     # pytest; FakeEngine, no downloads
@@ -82,6 +89,19 @@ klyvion/
 6. **Voice storage** — cloned voices persist in `KLYVION_DATA_DIR`
    (default `~/.klyvion`, `/data` in Docker) with a JSON index. Cloned
    voices are currently **global across all users** of a server instance.
+7. **Download-gating auth** — generating and *previewing* audio is open to
+   everyone; **downloading the WAV requires a logged-in session**. Two
+   providers: local username/password (bcrypt) and "Log in with Google"
+   (Authlib OIDC). Sessions are a signed HS256 JWT in an `HttpOnly`,
+   `SameSite=Lax` cookie (`klyvion_session`) — survives the Google redirect,
+   never readable by page scripts. `/synthesize` returns
+   `{audio_id, preview_url, download_url}`; `GET /audio/{id}` streams inline
+   (open) and `GET /download/{id}` serves an attachment (gated). Users persist
+   as JSON in `KLYVION_DATA_DIR/users.json`; the `UserStore` ABC is the seam
+   for a future DB backend. Google login is **optional**: with either Google
+   env var unset, the flow is disabled and the UI hides its button — local
+   accounts still work. Deps live in the `server` extra (`pyjwt`, `bcrypt`,
+   `authlib`, `httpx`, `itsdangerous`).
 
 ## Interfaces
 
@@ -105,9 +125,14 @@ tts.clone_voice("alex", "sample.wav")
 tts.speak("Cloned!", voice="alex")
 ```
 
-HTTP: `GET /voices`, `POST /synthesize` (JSON → WAV), `POST /voices/{name}`
-(multipart upload → clone), `DELETE /voices/{name}`, `GET /healthz`,
-web UI at `/`, docs at `/docs`.
+HTTP: `GET /voices`, `POST /synthesize` (JSON → `{audio_id, preview_url,
+download_url}`), `GET /audio/{id}` (preview, open), `GET /download/{id}`
+(WAV attachment, **login required**), `POST /voices/{name}` (multipart upload →
+clone), `DELETE /voices/{name}`, `GET /healthz`, web UI at `/`, docs at `/docs`.
+Auth: `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`,
+`GET /auth/me`, `GET /auth/config` (`{google_enabled}`), and the Google flow
+`GET /auth/google/login` → `GET /auth/google/callback`. A logged-in session is
+an `HttpOnly` cookie, so browsers send it automatically.
 
 ## Environment variables
 
@@ -122,6 +147,17 @@ web UI at `/`, docs at `/docs`.
 | `KLYVION_ENABLE_CLONING` | `1` | `0` = presets-only public demo |
 | `KLYVION_MAX_UPLOAD_MB` | `15` | |
 | `KLYVION_CORS_ORIGINS` | `*` | set to real domains in prod |
+| `KLYVION_SECRET_KEY` | (ephemeral) | HMAC secret for session cookies; **set a stable ≥32-char value in prod** or sessions drop on restart |
+| `KLYVION_GOOGLE_CLIENT_ID` | `` | Google OAuth client ID; both this and the secret enable "Log in with Google" |
+| `KLYVION_GOOGLE_CLIENT_SECRET` | `` | Google OAuth client secret |
+| `KLYVION_TOKEN_TTL_HOURS` | `168` | session lifetime (7 days) |
+| `KLYVION_PUBLIC_BASE_URL` | `` (derive from request) | external base URL used to build the Google redirect URI, e.g. `https://klyvion.sharadbhandari.com.np` |
+
+**Google OAuth setup:** create an OAuth 2.0 Client ID (type "Web application")
+in Google Cloud Console, add the authorized redirect URI
+`https://<host>/auth/google/callback` (for local dev,
+`http://localhost:8000/auth/google/callback`), and set the two `KLYVION_GOOGLE_*`
+env vars. Leave them unset to run username/password only.
 
 ## Dev workflow
 
