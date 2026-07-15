@@ -53,6 +53,7 @@ class Language:
 
 _LANGUAGES: dict[str, Language] = {
     "en": Language("en", "English", enabled=True, engine_native=True),
+    "hi": Language("hi", "Hindi", enabled=True, engine_native=True),
     # --- Ready to enable (Tier A): flip `enabled=True` and add tests ---
     "es": Language("es", "Spanish", engine_native=True),
     "fr": Language("fr", "French", engine_native=True),
@@ -69,7 +70,6 @@ _LANGUAGES: dict[str, Language] = {
     "ja": Language("ja", "Japanese", engine_native=True),
     "hu": Language("hu", "Hungarian", engine_native=True),
     "ko": Language("ko", "Korean", engine_native=True),
-    "hi": Language("hi", "Hindi", engine_native=True),
     # --- Tier C examples (need a new engine/model): ---
     # "ne": Language("ne", "Nepali"),
     # "bn": Language("bn", "Bengali"),

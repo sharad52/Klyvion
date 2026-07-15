@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Klyvion — text to speech &amp; voice cloning</title>
 <meta name="description" content="Open-source text-to-speech with voice cloning. Type text, pick a voice, get audio.">
+<link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -79,6 +80,15 @@
   .chip[aria-pressed="true"]{border-color:var(--ember);background:rgba(255,180,84,.12);color:var(--ember)}
   .chip:hover{border-color:var(--ember)}
   .chip .sub{display:block;font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted)}
+
+  .lang-row{display:flex;align-items:center;gap:12px;margin:0 0 18px}
+  .lang-row label{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.06em}
+  .lang-row select{
+    background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;
+    padding:9px 14px;font:inherit;font-size:.9rem;cursor:pointer;
+  }
+  .lang-row select:focus{outline:2px solid var(--ember);outline-offset:2px}
 
   .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
   .btn{
@@ -164,6 +174,11 @@
 
   <div class="chips" id="chips" role="group" aria-label="Choose a voice"></div>
 
+  <div class="lang-row">
+    <label for="language">Language</label>
+    <select id="language" aria-label="Choose a language"></select>
+  </div>
+
   <div class="row">
     <button class="btn" id="speak">Generate speech</button>
     <button class="btn ghost" id="download" style="display:none">Download WAV</button>
@@ -239,6 +254,7 @@
 const $ = s => document.querySelector(s);
 const API = "";           // same origin
 let voice = "woman";
+let language = "en";
 let currentUser = null;
 let lastDownloadUrl = null;
 let authMode = "login";   // or "register"
@@ -353,6 +369,26 @@ async function loadVoices(){
   }
 }
 
+/* ---------- languages ---------- */
+async function loadLanguages(){
+  const sel = $("#language");
+  try{
+    const res = await fetch(API + "/languages");
+    const langs = await res.json();
+    sel.innerHTML = "";
+    for(const l of langs){
+      const opt = document.createElement("option");
+      opt.value = l.code; opt.textContent = l.name;
+      sel.appendChild(opt);
+    }
+    if(langs.some(l => l.code === language)) sel.value = language;
+    else if(langs.length) language = sel.value;
+    sel.onchange = () => { language = sel.value; };
+  }catch(e){
+    // Leave the selector empty; synthesis falls back to the server default.
+  }
+}
+
 /* ---------- synthesis ---------- */
 $("#text").addEventListener("input", e => $("#count").textContent = e.target.value.length);
 $("#count").textContent = $("#text").value.length;
@@ -367,7 +403,7 @@ $("#speak").onclick = async () => {
   try{
     const res = await fetch(API + "/synthesize", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ text, voice })
+      body: JSON.stringify({ text, voice, language })
     });
     if(!res.ok){
       const d = await res.json().catch(()=>({detail:res.statusText}));
@@ -486,6 +522,7 @@ function drawWave(){
   }
 })();
 loadVoices();
+loadLanguages();
 loadAuthConfig();
 refreshAuth();
 </script>

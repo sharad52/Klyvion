@@ -16,6 +16,7 @@ High-level usage:
 from klyvion.config import Settings, get_settings
 from klyvion.core import Klyvion
 from klyvion.voices.registry import VoiceRegistry, VoicePreset
+from klyvion import normalizers  # noqa: F401  (registers text normalizers)
 
 __all__ = [
     "Klyvion",

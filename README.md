@@ -15,8 +15,9 @@ zero-shot voice cloning, in Python.
 - 🔌 Pluggable engines: neural **XTTS v2** (default) or a lightweight offline
   `pyttsx3` fallback — adding a new backend (Piper, Bark, or your own
   C/C++ engine via pybind11) means implementing one small class
-- 🌍 **English in v0.1**, multilingual-ready: the XTTS engine speaks 17
-  languages, and enabling one is often a one-line change — see
+- 🌍 **English and Hindi** in v0.1 (with number-to-words normalization for
+  both), multilingual-ready: the XTTS engine speaks 17 languages, and enabling
+  another is often a one-line change — see
   [docs/EXTENDING_LANGUAGES.md](docs/EXTENDING_LANGUAGES.md)
 
 ## Installation
@@ -151,7 +152,7 @@ klyvion/
 │   │   └── processing.py     # resample, trim, normalize, pitch shift
 │   └── api/
 │       └── server.py         # FastAPI app
-│   └── languages.py          # language registry (en enabled; 16 more ready)
+│   └── languages.py          # language registry (en + hi enabled; 15 more ready)
 ├── docs/
 │   └── EXTENDING_LANGUAGES.md# how to add a language (3-tier guide)
 ├── tests/                    # pytest suite (no model download needed)
@@ -197,8 +198,8 @@ your hardware and PRs with results tables are welcome.
 
 | Milestone | Focus |
 |-----------|-------|
-| **v0.1** (now) | Core API/CLI/server, 4 presets, cloning, English |
-| **v0.2** | Streaming API, first Tier-A language pack (es/fr/de/hi), CHANGELOG automation |
+| **v0.1** (now) | Core API/CLI/server, 4 presets, cloning, English + Hindi |
+| **v0.2** | Streaming API, wider Tier-A language pack (es/fr/de/…), CHANGELOG automation |
 | **v0.5** | Multi-engine routing (Piper for non-XTTS languages), per-session voice scoping |
 | **v1.0** | Stable API, benchmark suite, PyPI release, signed releases |
 
