@@ -150,3 +150,21 @@ def test_google_disabled_by_default(client):
     res = client.get("/auth/config")
     assert res.status_code == 200
     assert res.json()["google_enabled"] is False
+
+
+# --------------------------------------------------------------------- #
+# Public static + metadata endpoints
+
+
+def test_favicon_is_served(client):
+    res = client.get("/favicon.ico")
+    assert res.status_code == 200
+    assert res.headers["content-type"] == "image/x-icon"
+    assert res.content[:4] == b"\x00\x00\x01\x00"  # ICO magic number
+
+
+def test_languages_lists_enabled(client):
+    res = client.get("/languages")
+    assert res.status_code == 200
+    codes = {lang["code"] for lang in res.json()}
+    assert {"en", "hi"} <= codes

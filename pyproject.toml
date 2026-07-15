@@ -20,6 +20,11 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=1.24",
+    # Text normalization: expand digits to spoken words before synthesis.
+    # Both are small and pure-Python; imports are still guarded so a stripped
+    # install degrades to reading raw digits rather than failing.
+    "num2words>=0.5.12",       # English (and other European) number words
+    "indic-num2words>=1.3",    # Hindi (and other Indic) number words
 ]
 
 [project.optional-dependencies]
@@ -62,7 +67,7 @@ Issues = "https://github.com/sharad52/klyvion/issues"
 include = ["klyvion*"]
 
 [tool.setuptools.package-data]
-klyvion = ["webui/*.html"]
+klyvion = ["webui/*.html", "webui/*.ico"]
 
 # PEP 735 dependency groups — used by `uv sync` for the local dev environment.
 # The public install UX stays on extras above (`pip install klyvion[neural]`);

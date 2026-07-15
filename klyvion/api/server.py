@@ -5,6 +5,7 @@ Run with:
 
 Endpoints:
     GET  /voices                 -> list voices
+    GET  /languages              -> list enabled languages
     POST /synthesize             -> JSON {text, voice, ...} -> {audio_id, urls}
     GET  /audio/{id}             -> stream generated audio for preview (open)
     GET  /download/{id}          -> download the WAV (login required)
@@ -103,7 +104,9 @@ def create_app(tts: Klyvion | None = None):
     app.include_router(build_auth_router(auth_service, settings))
     get_current_user = current_user_dependency(auth_service)
 
-    webui = Path(__file__).resolve().parent.parent / "webui" / "index.html"
+    webui_dir = Path(__file__).resolve().parent.parent / "webui"
+    webui = webui_dir / "index.html"
+    favicon = webui_dir / "favicon.ico"
 
     def _resolve_clip(audio_id: str) -> Path:
         if not _AUDIO_ID_RE.match(audio_id):
@@ -120,6 +123,12 @@ def create_app(tts: Klyvion | None = None):
             return FileResponse(webui, media_type="text/html")
         raise HTTPException(status_code=404, detail="Web UI not bundled.")
 
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon_ico():
+        if favicon.exists():
+            return FileResponse(favicon, media_type="image/x-icon")
+        raise HTTPException(status_code=404, detail="Favicon not bundled.")
+
     @app.get("/healthz", include_in_schema=False)
     def healthz():
         return {"status": "ok"}
@@ -130,6 +139,11 @@ def create_app(tts: Klyvion | None = None):
             {"name": v.name, "kind": v.kind, "description": v.description}
             for v in tts.list_voices()
         ]
+
+    @app.get("/languages")
+    def list_languages():
+        """List the languages this server can synthesize. Open to everyone."""
+        return [{"code": lang.code, "name": lang.name} for lang in tts.list_languages()]
 
     @app.post("/synthesize")
     def synthesize(req: SynthesizeRequest):
