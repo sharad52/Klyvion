@@ -39,14 +39,22 @@ class AuthService:
         hasher: PasswordHasher,
         tokens: TokenService,
         google: GoogleOAuthClient | None = None,
+        signup_credits: int = 0,
     ) -> None:
         self._store = store
         self._hasher = hasher
         self._tokens = tokens
         self._google = google
+        self._signup_credits = signup_credits
 
     @classmethod
-    def from_settings(cls, settings: Settings, *, secret_key: str) -> "AuthService":
+    def from_settings(
+        cls,
+        settings: Settings,
+        *,
+        secret_key: str,
+        store: UserStore | None = None,
+    ) -> "AuthService":
         """Build the default service graph from ``settings``.
 
         Args:
@@ -54,6 +62,9 @@ class AuthService:
             secret_key: resolved HMAC secret for signing session tokens. The
                 caller resolves it (and warns on an ephemeral one) so the same
                 secret can also seed the session middleware.
+            store: an optional pre-built user store. Pass a shared instance so
+                the billing service mutates the *same* store (and lock);
+                defaults to a :class:`JsonUserStore` over ``settings.users_file``.
         """
         google: GoogleOAuthClient | None = None
         if settings.google_enabled:
@@ -61,11 +72,17 @@ class AuthService:
                 settings.google_client_id, settings.google_client_secret
             )
         return cls(
-            store=JsonUserStore(settings.users_file),
+            store=store or JsonUserStore(settings.users_file),
             hasher=PasswordHasher(),
             tokens=TokenService(secret_key, ttl_hours=settings.token_ttl_hours),
             google=google,
+            signup_credits=settings.signup_credits,
         )
+
+    @property
+    def store(self) -> UserStore:
+        """The backing user store (shared with the billing service)."""
+        return self._store
 
     # ------------------------------------------------------------------ #
     # Local accounts
@@ -87,9 +104,14 @@ class AuthService:
             username=username,
             provider="local",
             password_hash=self._hasher.hash(password),
+            credits=self._signup_credits,
         )
         self._store.save(user)
-        logger.info("Registered local user '%s'.", username)
+        logger.info(
+            "Registered local user '%s' with %d starter credits.",
+            username,
+            self._signup_credits,
+        )
         return user
 
     def login(self, username: str, password: str) -> User:
@@ -139,12 +161,16 @@ class AuthService:
                 f"'{username}' already has a password account. "
                 "Log in with your password instead."
             )
+        # Preserve a returning user's balance and plan; only a first-time login
+        # is granted the starter credits.
         user = User(
             username=username,
             provider="google",
             password_hash=None,
             email=profile.email,
             display_name=profile.name,
+            plan=existing.plan if existing else "free",
+            credits=existing.credits if existing else self._signup_credits,
         )
         self._store.save(user)
         logger.info("Authenticated Google user '%s'.", username)
