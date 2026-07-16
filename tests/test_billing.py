@@ -101,6 +101,41 @@ def test_new_account_receives_signup_credits(metered):
     assert user["credits_granted"] == SIGNUP_CREDITS
 
 
+def test_pre_billing_account_is_backfilled_on_login(tmp_path):
+    """An account created before the credit fields existed gets granted once."""
+    app = _build_app(tmp_path, billing_enabled=True)
+    _register(TestClient(app), "legacy")
+
+    # Simulate a legacy record: drop the credit fields from users.json.
+    users_file = tmp_path / "data" / "users.json"
+    data = json.loads(users_file.read_text())
+    for key in ("credits", "credits_used", "credits_granted", "plan"):
+        data["legacy"].pop(key, None)
+    users_file.write_text(json.dumps(data))
+
+    fresh = TestClient(app)
+    login = fresh.post(
+        "/auth/login", json={"username": "legacy", "password": GOOD_PASSWORD}
+    )
+    assert login.status_code == 200, login.text
+    me = fresh.get("/auth/me").json()["user"]
+    assert me["credits"] == SIGNUP_CREDITS
+    assert me["credits_granted"] == SIGNUP_CREDITS
+
+
+def test_spent_account_is_not_re_granted_on_login(metered):
+    """The backfill must not top up an account that legitimately spent credits."""
+    client = TestClient(metered)
+    _register(client, "spender")
+    client.post("/synthesize", json={"text": "Hello", "voice": "man"})  # spend 5
+    # A fresh login must not restore the spent credits.
+    fresh = TestClient(metered)
+    fresh.post("/auth/login", json={"username": "spender", "password": GOOD_PASSWORD})
+    assert fresh.get("/auth/me").json()["user"]["credits"] == SIGNUP_CREDITS - len(
+        "Hello"
+    )
+
+
 # --------------------------------------------------------------------- #
 # Metered synthesis
 

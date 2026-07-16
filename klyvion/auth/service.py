@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+from dataclasses import replace
 
 from klyvion.auth.errors import (
     GoogleNotConfiguredError,
@@ -131,7 +132,7 @@ class AuthService:
             or not self._hasher.verify(password, user.password_hash)
         ):
             raise InvalidCredentialsError("Incorrect username or password.")
-        return user
+        return self._ensure_starter_credits(user)
 
     # ------------------------------------------------------------------ #
     # Google accounts
@@ -200,9 +201,38 @@ class AuthService:
         user = self._store.get(username)
         if user is None:
             raise InvalidCredentialsError("Account no longer exists.")
-        return user
+        return self._ensure_starter_credits(user)
 
     # ------------------------------------------------------------------ #
+
+    def _ensure_starter_credits(self, user: User) -> User:
+        """Grant the starter credits to an account that never received them.
+
+        Self-heals accounts created before the credit system existed (their
+        stored record has no credit fields, so they load as zero). A
+        legitimately-spent account always has ``credits_granted > 0``, so that
+        flag uniquely identifies a never-granted account and the backfill runs
+        at most once. A no-op when the signup grant is zero.
+        """
+        if self._signup_credits <= 0 or user.credits_granted > 0:
+            return user
+
+        def grant(current: User) -> User:
+            if current.credits_granted > 0:  # another request beat us to it
+                return current
+            return replace(
+                current,
+                credits=current.credits + self._signup_credits,
+                credits_granted=self._signup_credits,
+            )
+
+        granted = self._store.atomic_update(user.username, grant)
+        logger.info(
+            "Backfilled %d starter credits for pre-existing user '%s'.",
+            self._signup_credits,
+            user.username,
+        )
+        return granted
 
     @staticmethod
     def _normalize_username(username: str) -> str:
