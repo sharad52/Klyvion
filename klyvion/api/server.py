@@ -12,9 +12,15 @@ Endpoints:
     POST /voices/{name}          -> multipart file upload -> clone voice
     DELETE /voices/{name}        -> remove a custom voice
     /auth/*                      -> registration, login, Google OAuth, logout
+    /billing/*                   -> plans, checkout, Stripe webhook
 
 Anyone may generate and preview audio; downloading the file requires a logged-in
 session (username/password or Google). See :mod:`klyvion.auth`.
+
+When billing is enabled (``KLYVION_BILLING_ENABLED=1``), ``/synthesize`` instead
+requires a logged-in session and debits token credits per character; see
+:mod:`klyvion.billing`. Billing is off by default, leaving the open behaviour
+above unchanged.
 """
 
 from __future__ import annotations
@@ -40,6 +46,7 @@ MAX_UPLOAD_MB = int(os.environ.get("KLYVION_MAX_UPLOAD_MB", "15"))
 _AUDIO_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,80}$")
 
 try:  # imported lazily elsewhere; module-level so FastAPI can resolve types
+    from fastapi import Request
     from pydantic import BaseModel, Field
 
     class SynthesizeRequest(BaseModel):
@@ -58,13 +65,17 @@ def _new_audio_id(voice: str) -> str:
     return f"{slug}-{uuid.uuid4().hex[:12]}"
 
 
-def create_app(tts: Klyvion | None = None):
+def create_app(tts: Klyvion | None = None, billing=None):
     """Build the FastAPI app.
 
     Args:
         tts: an optional pre-built :class:`~klyvion.core.Klyvion` facade. Tests
             inject one backed by a fake engine and a temp data dir; in
             production it is created from process settings.
+        billing: an optional pre-built
+            :class:`~klyvion.billing.service.BillingService`. Tests inject one
+            backed by a :class:`~klyvion.billing.provider.FakePaymentProvider`;
+            in production it is built from settings, sharing the auth store.
     """
     from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
     from fastapi.middleware.cors import CORSMiddleware
@@ -73,6 +84,10 @@ def create_app(tts: Klyvion | None = None):
 
     from klyvion.auth import AuthService, User, build_auth_router
     from klyvion.auth.router import current_user_dependency
+    from klyvion.auth.store import JsonUserStore
+    from klyvion.billing import build_billing_router
+    from klyvion.billing.errors import InsufficientCreditsError
+    from klyvion.billing.service import BillingService
 
     tts = tts or Klyvion()
     settings = tts.settings
@@ -100,9 +115,29 @@ def create_app(tts: Klyvion | None = None):
         allow_credentials=True,
     )
 
-    auth_service = AuthService.from_settings(settings, secret_key=secret_key)
+    # One shared store so credit debits and account writes serialise on a
+    # single lock (see JsonUserStore.atomic_update).
+    store = JsonUserStore(settings.users_file)
+    auth_service = AuthService.from_settings(
+        settings, secret_key=secret_key, store=store
+    )
+    billing_service = billing or BillingService.from_settings(settings, store=store)
     app.include_router(build_auth_router(auth_service, settings))
     get_current_user = current_user_dependency(auth_service)
+    app.include_router(
+        build_billing_router(billing_service, settings, get_current_user)
+    )
+
+    def billing_user_or_none(request: Request):
+        """Resolve the caller when billing is on; ``None`` when it is off.
+
+        With billing enabled, synthesis is metered per account, so a login is
+        required (401 otherwise). With billing disabled, synthesis stays open
+        and anonymous exactly as before.
+        """
+        if not billing_service.enabled:
+            return None
+        return get_current_user(request)
 
     webui_dir = Path(__file__).resolve().parent.parent / "webui"
     webui = webui_dir / "index.html"
@@ -146,8 +181,23 @@ def create_app(tts: Klyvion | None = None):
         return [{"code": lang.code, "name": lang.name} for lang in tts.list_languages()]
 
     @app.post("/synthesize")
-    def synthesize(req: SynthesizeRequest):
-        """Generate audio and return its ids. Open to everyone."""
+    def synthesize(req: SynthesizeRequest, user=Depends(billing_user_or_none)):
+        """Generate audio and return its ids.
+
+        Open and anonymous when billing is disabled. When billing is enabled it
+        requires a logged-in session, debits the caller's credits up front and
+        returns HTTP 402 if the balance is too low; a synthesis failure refunds
+        the charge so a caller is never billed for audio they did not get.
+        """
+        cost = 0
+        if billing_service.enabled:
+            assert user is not None  # billing_user_or_none enforced the login
+            cost = billing_service.cost_of(req.text)
+            try:
+                user = billing_service.debit(user, cost)
+            except InsufficientCreditsError as exc:
+                raise HTTPException(status_code=402, detail=str(exc))
+
         audio_id = _new_audio_id(req.voice)
         out = settings.output_dir / f"{audio_id}.wav"
         try:
@@ -159,14 +209,24 @@ def create_app(tts: Klyvion | None = None):
                 speed=req.speed,
             )
         except KeyError as exc:
+            if cost:
+                billing_service.refund(user, cost)  # type: ignore[arg-type]
             raise HTTPException(status_code=404, detail=str(exc))
         except ValueError as exc:
+            if cost:
+                billing_service.refund(user, cost)  # type: ignore[arg-type]
             raise HTTPException(status_code=400, detail=str(exc))
-        return {
+
+        body: dict[str, object] = {
             "audio_id": audio_id,
             "preview_url": f"/audio/{audio_id}",
             "download_url": f"/download/{audio_id}",
         }
+        if billing_service.enabled:
+            assert user is not None
+            body["cost"] = cost
+            body["credits_remaining"] = user.credits
+        return body
 
     @app.get("/audio/{audio_id}")
     def preview_audio(audio_id: str):
