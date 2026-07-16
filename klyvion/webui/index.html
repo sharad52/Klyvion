@@ -139,6 +139,22 @@
   #google-wrap{display:none}
   #google-wrap.show{display:block}
 
+  /* credits + plans */
+  #authbar .credits{font-family:'JetBrains Mono',monospace;font-size:.76rem;
+    color:var(--ember);border:1px solid var(--line);border-radius:99px;padding:4px 11px}
+  #authbar .credits b{color:var(--text)}
+  .modal.wide{max-width:520px}
+  .plans{display:flex;flex-direction:column;gap:12px;margin-top:6px}
+  .plan-card{border:1px solid var(--line);border-radius:12px;padding:16px;
+    display:flex;align-items:center;justify-content:space-between;gap:14px;
+    background:var(--panel-2)}
+  .plan-card .meta h4{font-family:'Sora',sans-serif;font-size:1rem;margin-bottom:2px}
+  .plan-card .meta .grant{font-family:'JetBrains Mono',monospace;font-size:.74rem;color:var(--ember)}
+  .plan-card .meta .desc{font-size:.8rem;color:var(--muted);margin-top:3px}
+  .plan-card .price{font-family:'Sora',sans-serif;font-weight:700;font-size:1.15rem;white-space:nowrap}
+  .plan-card.current{border-color:var(--ember);background:rgba(255,180,84,.08)}
+  .plan-card .free-tag{font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--muted)}
+
   footer{padding:26px 0 40px;color:var(--muted);font-size:.85rem;
     border-top:1px solid var(--line);margin-top:28px}
   footer .row{justify-content:space-between}
@@ -250,6 +266,17 @@
   </div>
 </div>
 
+<!-- ---------- plans / buy-credits modal ---------- -->
+<div class="overlay" id="plans-overlay" role="dialog" aria-modal="true" aria-labelledby="plans-title">
+  <div class="modal wide">
+    <button class="close" id="plans-close" aria-label="Close">×</button>
+    <h3 id="plans-title">Buy credits</h3>
+    <p class="lead" id="plans-lead">Top up your token balance to keep generating.</p>
+    <div class="plans" id="plans-list"><!-- filled by JS --></div>
+    <p class="status" id="plans-status" role="status" aria-live="polite" style="margin-top:14px"></p>
+  </div>
+</div>
+
 <script>
 const $ = s => document.querySelector(s);
 const API = "";           // same origin
@@ -259,6 +286,7 @@ let currentUser = null;
 let lastDownloadUrl = null;
 let authMode = "login";   // or "register"
 let audioCtx, analyser, srcNode;
+let billingCfg = { billing_enabled:false, purchase_enabled:false, currency:"usd" };
 
 /* ---------- auth ---------- */
 async function refreshAuth(){
@@ -272,16 +300,23 @@ async function refreshAuth(){
 function renderAuthbar(){
   const bar = $("#authbar");
   if(currentUser){
+    const credits = billingCfg.billing_enabled
+      ? `<span class="credits">credits <b>${fmt(currentUser.credits)}</b></span>` : "";
+    const buy = (billingCfg.billing_enabled && billingCfg.purchase_enabled)
+      ? `<button class="btn ghost sm" id="buy-credits">Buy credits</button>` : "";
     bar.innerHTML =
-      `<span class="who">signed in as <b></b></span>
-       <button class="btn ghost sm" id="logout">Log out</button>`;
-    bar.querySelector("b").textContent = currentUser.display_name || currentUser.username;
+      `${credits}<span class="who">signed in as <b></b></span>
+       ${buy}<button class="btn ghost sm" id="logout">Log out</button>`;
+    bar.querySelector(".who b").textContent = currentUser.display_name || currentUser.username;
     $("#logout").onclick = logout;
+    if(buy) $("#buy-credits").onclick = () => openPlans();
   }else{
     bar.innerHTML = `<button class="btn ghost sm" id="open-login">Log in / Sign up</button>`;
     $("#open-login").onclick = () => openAuth();
   }
 }
+
+const fmt = n => (n ?? 0).toLocaleString();
 
 async function loadAuthConfig(){
   try{
@@ -289,6 +324,13 @@ async function loadAuthConfig(){
     const cfg = await res.json();
     if(cfg.google_enabled) $("#google-wrap").classList.add("show");
   }catch(e){ /* Google stays hidden */ }
+}
+
+async function loadBillingConfig(){
+  try{
+    const res = await fetch(API + "/billing/config");
+    billingCfg = await res.json();
+  }catch(e){ /* billing stays off in the UI */ }
 }
 
 function openAuth(lead){
@@ -314,7 +356,7 @@ $("#tab-login").onclick = () => setAuthMode("login");
 $("#tab-register").onclick = () => setAuthMode("register");
 $("#auth-close").onclick = closeAuth;
 $("#auth-overlay").onclick = e => { if(e.target.id === "auth-overlay") closeAuth(); };
-document.addEventListener("keydown", e => { if(e.key === "Escape") closeAuth(); });
+document.addEventListener("keydown", e => { if(e.key === "Escape"){ closeAuth(); closePlans(); } });
 
 $("#auth-form").addEventListener("submit", async e => {
   e.preventDefault();
@@ -346,6 +388,69 @@ async function logout(){
   catch(e){ /* ignore */ }
   currentUser = null; renderAuthbar();
 }
+
+/* ---------- plans / buy credits ---------- */
+async function openPlans(lead){
+  if(!currentUser){ openAuth("Log in first, then top up your credits."); return; }
+  $("#plans-status").textContent = "";
+  $("#plans-lead").textContent = lead ||
+    `You have ${fmt(currentUser.credits)} credits. Top up to keep generating.`;
+  await loadPlans();
+  $("#plans-overlay").classList.add("show");
+}
+function closePlans(){ $("#plans-overlay").classList.remove("show"); }
+
+async function loadPlans(){
+  const box = $("#plans-list");
+  try{
+    const res = await fetch(API + "/billing/plans");
+    const plans = await res.json();
+    box.innerHTML = "";
+    for(const p of plans){
+      const card = document.createElement("div");
+      card.className = "plan-card" + (currentUser && currentUser.plan === p.id ? " current" : "");
+      const action = p.is_free
+        ? `<span class="free-tag">included</span>`
+        : `<button class="btn sm" data-plan="${p.id}">${p.price_display}</button>`;
+      card.innerHTML =
+        `<div class="meta">
+           <h4>${p.name}</h4>
+           <div class="grant">${fmt(p.credits)} credits</div>
+           <div class="desc">${p.description}</div>
+         </div>
+         <div class="price">${action}</div>`;
+      const btn = card.querySelector("button[data-plan]");
+      if(btn) btn.onclick = () => buyPlan(p.id, btn);
+      box.appendChild(card);
+    }
+  }catch(e){
+    box.innerHTML = `<p class="status err">Could not load plans.</p>`;
+  }
+}
+
+async function buyPlan(planId, btn){
+  const st = $("#plans-status");
+  btn.disabled = true; st.className = "status"; st.textContent = "Starting checkout…";
+  try{
+    const res = await fetch(API + "/billing/checkout", {
+      method:"POST", credentials:"include",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ plan_id: planId })
+    });
+    if(res.status === 401){ closePlans(); openAuth("Log in to buy credits."); return; }
+    if(!res.ok){
+      const d = await res.json().catch(()=>({detail:res.statusText}));
+      throw new Error(d.detail || "Checkout failed");
+    }
+    const { checkout_url } = await res.json();
+    window.location.href = checkout_url;   // hand off to hosted checkout
+  }catch(err){
+    st.textContent = err.message; st.className = "status err";
+  }finally{ btn.disabled = false; }
+}
+
+$("#plans-close").onclick = closePlans;
+$("#plans-overlay").onclick = e => { if(e.target.id === "plans-overlay") closePlans(); };
 
 /* ---------- voice chips ---------- */
 async function loadVoices(){
@@ -402,14 +507,26 @@ $("#speak").onclick = async () => {
   $("#download").style.display = "none"; lastDownloadUrl = null;
   try{
     const res = await fetch(API + "/synthesize", {
-      method:"POST", headers:{"Content-Type":"application/json"},
+      method:"POST", credentials:"include", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({ text, voice, language })
     });
+    if(res.status === 401){          // billing on, not logged in
+      openAuth("Log in to generate speech."); return;
+    }
+    if(res.status === 402){          // billing on, out of credits
+      const d = await res.json().catch(()=>({detail:"You're out of credits."}));
+      st.textContent = d.detail; st.className = "status err";
+      await refreshAuth(); openPlans(d.detail); return;
+    }
     if(!res.ok){
       const d = await res.json().catch(()=>({detail:res.statusText}));
       throw new Error(d.detail || "Synthesis failed");
     }
-    const { preview_url, download_url } = await res.json();
+    const body = await res.json();
+    const { preview_url, download_url } = body;
+    if(body.credits_remaining !== undefined && currentUser){
+      currentUser.credits = body.credits_remaining; renderAuthbar();
+    }
     lastDownloadUrl = download_url;
     const player = $("#player");
     player.src = API + preview_url;
@@ -513,18 +630,25 @@ function drawWave(){
 })();
 
 /* ---------- boot ---------- */
-(function showAuthError(){
-  const err = new URLSearchParams(location.search).get("auth_error");
+(function showBootMessages(){
+  const params = new URLSearchParams(location.search);
+  const err = params.get("auth_error");
+  const purchase = params.get("purchase");
+  const st = $("#synth-status");
   if(err){
-    const st = $("#synth-status");
     st.textContent = decodeURIComponent(err); st.className = "status err";
-    history.replaceState(null, "", location.pathname);
+  }else if(purchase === "success"){
+    st.textContent = "Payment received — credits added to your account."; st.className = "status ok";
+  }else if(purchase === "cancelled"){
+    st.textContent = "Checkout cancelled — no charge was made."; st.className = "status";
   }
+  if(err || purchase) history.replaceState(null, "", location.pathname);
 })();
 loadVoices();
 loadLanguages();
 loadAuthConfig();
-refreshAuth();
+// Billing config must resolve before the authbar renders so credits show.
+loadBillingConfig().then(refreshAuth);
 </script>
 </body>
 </html>
