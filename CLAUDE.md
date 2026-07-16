@@ -17,8 +17,10 @@ appears, it's a bug.
 
 ## Current status (v0.1.0)
 
-- ✅ 27/27 pytest tests passing (fast; no model download needed — uses a FakeEngine).
-  The 11 auth tests skip cleanly if the `server` extra isn't installed.
+- ✅ 51/51 pytest tests passing (fast; no model download needed — uses a FakeEngine).
+  The auth + billing tests skip cleanly if the `server` extra isn't installed.
+- ✅ Optional token-credit system + Stripe payments (off by default via
+  `KLYVION_BILLING_ENABLED`); see docs/BILLING.md.
 - ✅ CLI, Python API, and FastAPI HTTP server all working
 - ✅ Web UI bundled and served at `/` by the API server
 - ✅ English only (by design); 16 more languages pre-registered but disabled
@@ -50,7 +52,13 @@ klyvion/
 │   │   ├── passwords.py       # bcrypt hashing; tokens.py: HS256 session JWT
 │   │   ├── google.py          # Authlib OpenID Connect client (optional)
 │   │   └── router.py          # /auth/* endpoints + get_current_user dependency
-│   ├── api/server.py          # FastAPI app (create_app factory; injectable Klyvion)
+│   ├── billing/               # optional token credits + Stripe payments
+│   │   ├── service.py         # BillingService facade (cost/debit/refund/checkout/webhook)
+│   │   ├── plans.py           # Plan value object + PlanCatalog (free/standard/premium)
+│   │   ├── provider.py        # PaymentProvider ABC + StripeProvider + FakePaymentProvider
+│   │   ├── errors.py          # typed BillingError hierarchy (402 InsufficientCredits, …)
+│   │   └── router.py          # /billing/* endpoints (config, plans, checkout, webhook)
+│   ├── api/server.py          # FastAPI app (create_app factory; injectable Klyvion + billing)
 │   └── webui/index.html       # single-file web UI (dark studio theme, ember accent,
 │                              #   live waveform via Web Audio API)
 ├── tests/                     # pytest; FakeEngine, no downloads
@@ -102,6 +110,19 @@ klyvion/
    env var unset, the flow is disabled and the UI hides its button — local
    accounts still work. Deps live in the `server` extra (`pyjwt`, `bcrypt`,
    `authlib`, `httpx`, `itsdangerous`).
+8. **Token credits & billing (optional, off by default)** — a `KLYVION_DATA_DIR`
+   account carries a `credits` balance and a `plan` name. New accounts get
+   `KLYVION_SIGNUP_CREDITS` (default 5000). When `KLYVION_BILLING_ENABLED=1`,
+   `/synthesize` requires a login and debits `len(text) × KLYVION_TOKENS_PER_CHAR`
+   credits (402 when short); when off, synthesis stays open and anonymous. Three
+   tiers (free/standard/premium) are sold as one-time credit top-ups via **Stripe
+   Checkout** (`mode=payment`), fulfilled by the `/billing/webhook` callback.
+   Mirrors the auth patterns: typed `BillingError`s, a `PlanCatalog`, and a
+   `PaymentProvider` ABC (`StripeProvider` for prod/test-mode, `FakePaymentProvider`
+   for offline dev/tests) as the extension seam. Billing shares the auth
+   `UserStore` instance so credit debits and account writes serialise on one lock
+   (`UserStore.atomic_update`). Deps: `stripe` in the `server` extra. Full guide:
+   **docs/BILLING.md** (Stripe test cards, `stripe listen`, disabling in prod).
 
 ## Interfaces
 
@@ -133,6 +154,12 @@ Auth: `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`,
 `GET /auth/me`, `GET /auth/config` (`{google_enabled}`), and the Google flow
 `GET /auth/google/login` → `GET /auth/google/callback`. A logged-in session is
 an `HttpOnly` cookie, so browsers send it automatically.
+Billing: `GET /billing/config` (`{billing_enabled, purchase_enabled, currency,
+publishable_key}`), `GET /billing/plans`, `POST /billing/checkout`
+(`{plan_id}` → `{checkout_url}`, login required), `POST /billing/webhook`
+(Stripe completion callback → credits the buyer). When billing is enabled,
+`/synthesize` requires a login and returns `{…, cost, credits_remaining}`;
+`GET /auth/me` includes the account's `credits` and `plan`.
 
 ## Environment variables
 
@@ -151,7 +178,14 @@ an `HttpOnly` cookie, so browsers send it automatically.
 | `KLYVION_GOOGLE_CLIENT_ID` | `` | Google OAuth client ID; both this and the secret enable "Log in with Google" |
 | `KLYVION_GOOGLE_CLIENT_SECRET` | `` | Google OAuth client secret |
 | `KLYVION_TOKEN_TTL_HOURS` | `168` | session lifetime (7 days) |
-| `KLYVION_PUBLIC_BASE_URL` | `` (derive from request) | external base URL used to build the Google redirect URI, e.g. `https://klyvion.sharadbhandari.com.np` |
+| `KLYVION_PUBLIC_BASE_URL` | `` (derive from request) | external base URL used to build the Google redirect URI and Stripe checkout return URLs, e.g. `https://klyvion.sharadbhandari.com.np` |
+| `KLYVION_BILLING_ENABLED` | `0` | master switch for token credits. `1` = synthesis requires login + debits credits (402 when out); `0` = open, unmetered (default) |
+| `KLYVION_SIGNUP_CREDITS` | `5000` | starter credits granted per new account |
+| `KLYVION_TOKENS_PER_CHAR` | `1` | credits charged per character synthesized |
+| `KLYVION_STRIPE_SECRET_KEY` | `` | `sk_test_…` (dev) / `sk_live_…` (prod); empty ⇒ purchasing disabled |
+| `KLYVION_STRIPE_PUBLISHABLE_KEY` | `` | `pk_…` publishable key exposed to the browser |
+| `KLYVION_STRIPE_WEBHOOK_SECRET` | `` | `whsec_…` for verifying webhook signatures |
+| `KLYVION_CURRENCY` | `usd` | ISO currency code for checkout |
 
 **Google OAuth setup:** create an OAuth 2.0 Client ID (type "Web application")
 in Google Cloud Console, add the authorized redirect URI
