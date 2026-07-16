@@ -52,6 +52,7 @@ server = [
     "authlib>=1.3",          # Google OpenID Connect / OAuth 2.0 flow
     "httpx>=0.27",           # async HTTP client Authlib uses for token exchange
     "itsdangerous>=2.1",     # Starlette SessionMiddleware (OAuth state/nonce)
+    "stripe>=7",             # token-credit purchases (hosted Checkout + webhooks)
 ]
 dev = ["pytest>=8", "pytest-cov", "ruff", "black"]
 all = ["klyvion[neural,lite,server]"]
