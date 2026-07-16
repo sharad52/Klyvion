@@ -12,6 +12,12 @@ anonymous demo unless you switch it on.
   (default **1 credit per character**), debited from the caller's balance.
 - When the balance is too low, the API returns **HTTP 402** and the web UI
   opens the *Buy credits* dialog.
+- Each account tracks lifetime **`credits_used`** and **`credits_granted`** on
+  top of the remaining **`credits`**, all returned by `GET /auth/me`. The web UI
+  surfaces them in an **account profile** (click your name or the credit pill):
+  tokens remaining / used / granted, a usage bar, and the per-character rate.
+  A refund for a failed generation rolls back `credits_used`, so failures never
+  count as usage.
 - Three tiers are advertised at `/billing/plans`:
 
   | Plan | Credits | Price |
@@ -127,7 +133,7 @@ and live; the key prefix is the only difference.
 
 ## HTTP endpoints
 
-- `GET /billing/config` → `{billing_enabled, purchase_enabled, currency, publishable_key}`
+- `GET /billing/config` → `{billing_enabled, purchase_enabled, currency, tokens_per_char, publishable_key}`
 - `GET /billing/plans` → advertised tiers
 - `POST /billing/checkout` `{plan_id}` (login required) → `{checkout_url}`
 - `POST /billing/webhook` → Stripe (or fake) completion callback; credits the buyer

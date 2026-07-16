@@ -105,6 +105,7 @@ class AuthService:
             provider="local",
             password_hash=self._hasher.hash(password),
             credits=self._signup_credits,
+            credits_granted=self._signup_credits,
         )
         self._store.save(user)
         logger.info(
@@ -161,8 +162,8 @@ class AuthService:
                 f"'{username}' already has a password account. "
                 "Log in with your password instead."
             )
-        # Preserve a returning user's balance and plan; only a first-time login
-        # is granted the starter credits.
+        # Preserve a returning user's balance, usage and plan; only a first-time
+        # login is granted the starter credits.
         user = User(
             username=username,
             provider="google",
@@ -171,6 +172,10 @@ class AuthService:
             display_name=profile.name,
             plan=existing.plan if existing else "free",
             credits=existing.credits if existing else self._signup_credits,
+            credits_used=existing.credits_used if existing else 0,
+            credits_granted=(
+                existing.credits_granted if existing else self._signup_credits
+            ),
         )
         self._store.save(user)
         logger.info("Authenticated Google user '%s'.", username)

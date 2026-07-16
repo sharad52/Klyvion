@@ -97,6 +97,8 @@ def test_new_account_receives_signup_credits(metered):
     user = _register(client)
     assert user["credits"] == SIGNUP_CREDITS
     assert user["plan"] == "free"
+    assert user["credits_used"] == 0
+    assert user["credits_granted"] == SIGNUP_CREDITS
 
 
 # --------------------------------------------------------------------- #
@@ -118,6 +120,10 @@ def test_metered_synthesis_debits_credits(metered):
     body = res.json()
     assert body["cost"] == len("Hello")
     assert body["credits_remaining"] == SIGNUP_CREDITS - len("Hello")
+    # Usage stats reflect the spend without touching the lifetime grant.
+    me = client.get("/auth/me").json()["user"]
+    assert me["credits_used"] == len("Hello")
+    assert me["credits_granted"] == SIGNUP_CREDITS
 
 
 def test_running_out_of_credits_returns_402(metered):
@@ -140,7 +146,9 @@ def test_failed_synthesis_refunds_the_charge(metered):
         "/synthesize", json={"text": "Hello", "voice": "nope-not-a-voice"}
     )
     assert res.status_code == 404
-    assert client.get("/auth/me").json()["user"]["credits"] == SIGNUP_CREDITS
+    me = client.get("/auth/me").json()["user"]
+    assert me["credits"] == SIGNUP_CREDITS
+    assert me["credits_used"] == 0  # a failed generation is never counted as used
 
 
 # --------------------------------------------------------------------- #
@@ -189,6 +197,8 @@ def test_webhook_credits_the_account(metered):
     assert res.json()["credited"] == 50_000
     me = client.get("/auth/me").json()["user"]
     assert me["credits"] == SIGNUP_CREDITS + 50_000
+    assert me["credits_granted"] == SIGNUP_CREDITS + 50_000
+    assert me["credits_used"] == 0
     assert me["plan"] == "standard"
 
 

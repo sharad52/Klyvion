@@ -155,11 +155,14 @@ Auth: `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`,
 `GET /auth/google/login` → `GET /auth/google/callback`. A logged-in session is
 an `HttpOnly` cookie, so browsers send it automatically.
 Billing: `GET /billing/config` (`{billing_enabled, purchase_enabled, currency,
-publishable_key}`), `GET /billing/plans`, `POST /billing/checkout`
+tokens_per_char, publishable_key}`), `GET /billing/plans`, `POST /billing/checkout`
 (`{plan_id}` → `{checkout_url}`, login required), `POST /billing/webhook`
 (Stripe completion callback → credits the buyer). When billing is enabled,
 `/synthesize` requires a login and returns `{…, cost, credits_remaining}`;
-`GET /auth/me` includes the account's `credits` and `plan`.
+`GET /auth/me` includes the account's `credits`, `plan`, `credits_used` and
+`credits_granted` (lifetime), which the web UI shows in an **account profile**
+modal (remaining/used/granted + a usage bar). Refunds on failed synthesis roll
+back `credits_used` so failures never count as usage.
 
 ## Environment variables
 

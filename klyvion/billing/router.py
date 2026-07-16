@@ -54,6 +54,7 @@ def build_billing_router(
             "billing_enabled": service.enabled,
             "purchase_enabled": service.purchase_enabled,
             "currency": service.currency,
+            "tokens_per_char": service.tokens_per_char,
             "publishable_key": settings.stripe_publishable_key,
         }
 

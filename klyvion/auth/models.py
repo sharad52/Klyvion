@@ -25,6 +25,11 @@ class User:
             ``credits`` balance, not the plan name.
         credits: remaining token-credit balance. Only meaningful when billing
             is enabled; each synthesized character debits ``tokens_per_char``.
+        credits_used: lifetime credits actually spent on synthesis (refunds for
+            failed generations do not count). Used for the usage display.
+        credits_granted: lifetime credits ever granted (starter grant plus every
+            purchase). ``credits`` never exceeds this; the difference from
+            ``credits_used`` is what remains.
     """
 
     username: str
@@ -34,6 +39,8 @@ class User:
     display_name: str = ""
     plan: str = "free"
     credits: int = 0
+    credits_used: int = 0
+    credits_granted: int = 0
 
     @property
     def public_name(self) -> str:
@@ -49,4 +56,6 @@ class User:
             "display_name": self.public_name,
             "plan": self.plan,
             "credits": self.credits,
+            "credits_used": self.credits_used,
+            "credits_granted": self.credits_granted,
         }

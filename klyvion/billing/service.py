@@ -99,6 +99,11 @@ class BillingService:
     def currency(self) -> str:
         return self._currency
 
+    @property
+    def tokens_per_char(self) -> int:
+        """Credits charged per character of synthesized text."""
+        return self._tokens_per_char
+
     def plans(self) -> list[Plan]:
         """Return every advertised plan."""
         return self._catalog.all()
@@ -125,15 +130,27 @@ class BillingService:
                     f"This needs {cost} credits but you have "
                     f"{current.credits}. Buy more to continue."
                 )
-            return replace(current, credits=current.credits - cost)
+            return replace(
+                current,
+                credits=current.credits - cost,
+                credits_used=current.credits_used + cost,
+            )
 
         return self._store.atomic_update(user.username, mutator)
 
     def refund(self, user: User, amount: int) -> User:
-        """Return ``amount`` credits to ``user`` (used when synthesis fails)."""
+        """Return ``amount`` credits to ``user`` (used when synthesis fails).
+
+        The refunded amount is also removed from lifetime usage so a failed
+        generation is never counted as consumed.
+        """
 
         def mutator(current: User) -> User:
-            return replace(current, credits=current.credits + amount)
+            return replace(
+                current,
+                credits=current.credits + amount,
+                credits_used=max(0, current.credits_used - amount),
+            )
 
         return self._store.atomic_update(user.username, mutator)
 
@@ -185,6 +202,7 @@ class BillingService:
             return replace(
                 current,
                 credits=current.credits + event.credits,
+                credits_granted=current.credits_granted + event.credits,
                 plan=event.plan_id or current.plan,
             )
 
