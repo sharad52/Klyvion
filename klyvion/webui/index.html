@@ -139,6 +139,44 @@
   #google-wrap{display:none}
   #google-wrap.show{display:block}
 
+  /* credits + plans */
+  #authbar .credits{font-family:'JetBrains Mono',monospace;font-size:.76rem;
+    color:var(--ember);border:1px solid var(--line);border-radius:99px;padding:4px 11px;
+    background:none;cursor:pointer}
+  #authbar .credits:hover{border-color:var(--ember)}
+  #authbar .credits b{color:var(--text)}
+  #authbar button.who{background:none;border:none;font:inherit;cursor:pointer;padding:0}
+  #authbar button.who:hover b, #authbar button.who:hover{color:var(--text)}
+  .profile-trigger{color:inherit}
+
+  /* profile / account stats */
+  .stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:6px}
+  .stat{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--panel-2)}
+  .stat .label{display:block;font-family:'JetBrains Mono',monospace;font-size:.66rem;
+    letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .stat .val{font-family:'Sora',sans-serif;font-weight:700;font-size:1.5rem}
+  .stat .val.ember{color:var(--ember)}
+  .stat .val.plan{text-transform:capitalize;font-size:1.15rem}
+  .usage{margin-top:18px}
+  .usage-head{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;
+    font-size:.72rem;color:var(--muted);margin-bottom:6px}
+  .usage .bar{height:12px;border-radius:99px;background:var(--panel-2);border:1px solid var(--line);
+    overflow:hidden}
+  .usage .fill{height:100%;width:0;border-radius:99px;
+    background:linear-gradient(90deg,var(--ember) 0%,var(--ember-deep) 100%);transition:width .35s}
+  .usage-foot{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--muted);margin-top:8px}
+  .modal.wide{max-width:520px}
+  .plans{display:flex;flex-direction:column;gap:12px;margin-top:6px}
+  .plan-card{border:1px solid var(--line);border-radius:12px;padding:16px;
+    display:flex;align-items:center;justify-content:space-between;gap:14px;
+    background:var(--panel-2)}
+  .plan-card .meta h4{font-family:'Sora',sans-serif;font-size:1rem;margin-bottom:2px}
+  .plan-card .meta .grant{font-family:'JetBrains Mono',monospace;font-size:.74rem;color:var(--ember)}
+  .plan-card .meta .desc{font-size:.8rem;color:var(--muted);margin-top:3px}
+  .plan-card .price{font-family:'Sora',sans-serif;font-weight:700;font-size:1.15rem;white-space:nowrap}
+  .plan-card.current{border-color:var(--ember);background:rgba(255,180,84,.08)}
+  .plan-card .free-tag{font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--muted)}
+
   footer{padding:26px 0 40px;color:var(--muted);font-size:.85rem;
     border-top:1px solid var(--line);margin-top:28px}
   footer .row{justify-content:space-between}
@@ -250,6 +288,62 @@
   </div>
 </div>
 
+<!-- ---------- plans / buy-credits modal ---------- -->
+<div class="overlay" id="plans-overlay" role="dialog" aria-modal="true" aria-labelledby="plans-title">
+  <div class="modal wide">
+    <button class="close" id="plans-close" aria-label="Close">×</button>
+    <h3 id="plans-title">Buy credits</h3>
+    <p class="lead" id="plans-lead">Top up your token balance to keep generating.</p>
+    <div class="plans" id="plans-list"><!-- filled by JS --></div>
+    <p class="status" id="plans-status" role="status" aria-live="polite" style="margin-top:14px"></p>
+  </div>
+</div>
+
+<!-- ---------- account / profile modal ---------- -->
+<div class="overlay" id="profile-overlay" role="dialog" aria-modal="true" aria-labelledby="profile-title">
+  <div class="modal wide">
+    <button class="close" id="profile-close" aria-label="Close">×</button>
+    <h3 id="profile-title">Your account</h3>
+    <p class="lead" id="profile-sub"></p>
+
+    <div id="profile-billing">
+      <div class="stat-grid">
+        <div class="stat">
+          <span class="label">Tokens remaining</span>
+          <span class="val ember" id="st-remaining">—</span>
+        </div>
+        <div class="stat">
+          <span class="label">Tokens used</span>
+          <span class="val" id="st-used">—</span>
+        </div>
+        <div class="stat">
+          <span class="label">Total granted</span>
+          <span class="val" id="st-granted">—</span>
+        </div>
+        <div class="stat">
+          <span class="label">Current plan</span>
+          <span class="val plan" id="st-plan">—</span>
+        </div>
+      </div>
+
+      <div class="usage">
+        <div class="usage-head"><span>Usage</span><span id="usage-pct">0%</span></div>
+        <div class="bar"><div class="fill" id="usage-fill"></div></div>
+        <div class="usage-foot" id="usage-foot"></div>
+      </div>
+
+      <div class="row" style="margin-top:18px">
+        <button class="btn" id="profile-buy">Buy more credits</button>
+        <span class="hint" id="cost-note" style="margin-top:0"></span>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:18px">
+      <button class="btn ghost sm" id="profile-logout">Log out</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = s => document.querySelector(s);
 const API = "";           // same origin
@@ -259,6 +353,7 @@ let currentUser = null;
 let lastDownloadUrl = null;
 let authMode = "login";   // or "register"
 let audioCtx, analyser, srcNode;
+let billingCfg = { billing_enabled:false, purchase_enabled:false, currency:"usd" };
 
 /* ---------- auth ---------- */
 async function refreshAuth(){
@@ -272,16 +367,24 @@ async function refreshAuth(){
 function renderAuthbar(){
   const bar = $("#authbar");
   if(currentUser){
-    bar.innerHTML =
-      `<span class="who">signed in as <b></b></span>
-       <button class="btn ghost sm" id="logout">Log out</button>`;
-    bar.querySelector("b").textContent = currentUser.display_name || currentUser.username;
+    const name = currentUser.display_name || currentUser.username;
+    const credits = billingCfg.billing_enabled
+      ? `<button class="credits profile-trigger" title="Account & usage">credits <b>${fmt(currentUser.credits)}</b></button>`
+      : "";
+    const who = `<button class="who profile-trigger" title="View account">${billingCfg.billing_enabled ? name : "signed in as " + name}</button>`;
+    const buy = (billingCfg.billing_enabled && billingCfg.purchase_enabled)
+      ? `<button class="btn ghost sm" id="buy-credits">Buy credits</button>` : "";
+    bar.innerHTML = credits + who + buy + `<button class="btn ghost sm" id="logout">Log out</button>`;
+    bar.querySelectorAll(".profile-trigger").forEach(b => b.onclick = () => openProfile());
     $("#logout").onclick = logout;
+    if(buy) $("#buy-credits").onclick = () => openPlans();
   }else{
     bar.innerHTML = `<button class="btn ghost sm" id="open-login">Log in / Sign up</button>`;
     $("#open-login").onclick = () => openAuth();
   }
 }
+
+const fmt = n => (n ?? 0).toLocaleString();
 
 async function loadAuthConfig(){
   try{
@@ -289,6 +392,13 @@ async function loadAuthConfig(){
     const cfg = await res.json();
     if(cfg.google_enabled) $("#google-wrap").classList.add("show");
   }catch(e){ /* Google stays hidden */ }
+}
+
+async function loadBillingConfig(){
+  try{
+    const res = await fetch(API + "/billing/config");
+    billingCfg = await res.json();
+  }catch(e){ /* billing stays off in the UI */ }
 }
 
 function openAuth(lead){
@@ -314,7 +424,7 @@ $("#tab-login").onclick = () => setAuthMode("login");
 $("#tab-register").onclick = () => setAuthMode("register");
 $("#auth-close").onclick = closeAuth;
 $("#auth-overlay").onclick = e => { if(e.target.id === "auth-overlay") closeAuth(); };
-document.addEventListener("keydown", e => { if(e.key === "Escape") closeAuth(); });
+document.addEventListener("keydown", e => { if(e.key === "Escape"){ closeAuth(); closePlans(); closeProfile(); } });
 
 $("#auth-form").addEventListener("submit", async e => {
   e.preventDefault();
@@ -346,6 +456,111 @@ async function logout(){
   catch(e){ /* ignore */ }
   currentUser = null; renderAuthbar();
 }
+
+/* ---------- plans / buy credits ---------- */
+async function openPlans(lead){
+  if(!currentUser){ openAuth("Log in first, then top up your credits."); return; }
+  $("#plans-status").textContent = "";
+  $("#plans-lead").textContent = lead ||
+    `You have ${fmt(currentUser.credits)} credits. Top up to keep generating.`;
+  await loadPlans();
+  $("#plans-overlay").classList.add("show");
+}
+function closePlans(){ $("#plans-overlay").classList.remove("show"); }
+
+async function loadPlans(){
+  const box = $("#plans-list");
+  try{
+    const res = await fetch(API + "/billing/plans");
+    const plans = await res.json();
+    box.innerHTML = "";
+    for(const p of plans){
+      const card = document.createElement("div");
+      card.className = "plan-card" + (currentUser && currentUser.plan === p.id ? " current" : "");
+      const action = p.is_free
+        ? `<span class="free-tag">included</span>`
+        : `<button class="btn sm" data-plan="${p.id}">${p.price_display}</button>`;
+      card.innerHTML =
+        `<div class="meta">
+           <h4>${p.name}</h4>
+           <div class="grant">${fmt(p.credits)} credits</div>
+           <div class="desc">${p.description}</div>
+         </div>
+         <div class="price">${action}</div>`;
+      const btn = card.querySelector("button[data-plan]");
+      if(btn) btn.onclick = () => buyPlan(p.id, btn);
+      box.appendChild(card);
+    }
+  }catch(e){
+    box.innerHTML = `<p class="status err">Could not load plans.</p>`;
+  }
+}
+
+async function buyPlan(planId, btn){
+  const st = $("#plans-status");
+  btn.disabled = true; st.className = "status"; st.textContent = "Starting checkout…";
+  try{
+    const res = await fetch(API + "/billing/checkout", {
+      method:"POST", credentials:"include",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ plan_id: planId })
+    });
+    if(res.status === 401){ closePlans(); openAuth("Log in to buy credits."); return; }
+    if(!res.ok){
+      const d = await res.json().catch(()=>({detail:res.statusText}));
+      throw new Error(d.detail || "Checkout failed");
+    }
+    const { checkout_url } = await res.json();
+    window.location.href = checkout_url;   // hand off to hosted checkout
+  }catch(err){
+    st.textContent = err.message; st.className = "status err";
+  }finally{ btn.disabled = false; }
+}
+
+$("#plans-close").onclick = closePlans;
+$("#plans-overlay").onclick = e => { if(e.target.id === "plans-overlay") closePlans(); };
+
+/* ---------- account / profile ---------- */
+async function openProfile(){
+  await refreshAuth();                 // pull fresh usage stats
+  if(!currentUser){ openAuth(); return; }
+  renderProfile();
+  $("#profile-overlay").classList.add("show");
+}
+function closeProfile(){ $("#profile-overlay").classList.remove("show"); }
+
+function renderProfile(){
+  const u = currentUser;
+  $("#profile-sub").textContent =
+    `${u.username} · ${u.provider === "google" ? "Google account" : "local account"}`;
+  const block = $("#profile-billing");
+  if(!billingCfg.billing_enabled){ block.style.display = "none"; return; }
+  block.style.display = "";
+
+  const remaining = u.credits || 0;
+  const used = u.credits_used || 0;
+  const granted = u.credits_granted || 0;
+  $("#st-remaining").textContent = fmt(remaining);
+  $("#st-used").textContent = fmt(used);
+  $("#st-granted").textContent = fmt(granted);
+  $("#st-plan").textContent = u.plan || "free";
+
+  const pct = granted > 0 ? Math.min(100, Math.round((used / granted) * 100)) : 0;
+  $("#usage-fill").style.width = pct + "%";
+  $("#usage-pct").textContent = pct + "% used";
+  $("#usage-foot").textContent =
+    `${fmt(used)} used of ${fmt(granted)} granted · ${fmt(remaining)} remaining`;
+
+  const rate = billingCfg.tokens_per_char || 1;
+  $("#cost-note").textContent =
+    (rate === 1 ? "1 credit" : `${rate} credits`) + " per character of text";
+  $("#profile-buy").style.display = billingCfg.purchase_enabled ? "" : "none";
+}
+
+$("#profile-close").onclick = closeProfile;
+$("#profile-overlay").onclick = e => { if(e.target.id === "profile-overlay") closeProfile(); };
+$("#profile-buy").onclick = () => { closeProfile(); openPlans(); };
+$("#profile-logout").onclick = () => { closeProfile(); logout(); };
 
 /* ---------- voice chips ---------- */
 async function loadVoices(){
@@ -402,14 +617,29 @@ $("#speak").onclick = async () => {
   $("#download").style.display = "none"; lastDownloadUrl = null;
   try{
     const res = await fetch(API + "/synthesize", {
-      method:"POST", headers:{"Content-Type":"application/json"},
+      method:"POST", credentials:"include", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({ text, voice, language })
     });
+    if(res.status === 401){          // billing on, not logged in
+      openAuth("Log in to generate speech."); return;
+    }
+    if(res.status === 402){          // billing on, out of credits
+      const d = await res.json().catch(()=>({detail:"You're out of credits."}));
+      st.textContent = d.detail; st.className = "status err";
+      await refreshAuth(); openPlans(d.detail); return;
+    }
     if(!res.ok){
       const d = await res.json().catch(()=>({detail:res.statusText}));
       throw new Error(d.detail || "Synthesis failed");
     }
-    const { preview_url, download_url } = await res.json();
+    const body = await res.json();
+    const { preview_url, download_url } = body;
+    if(body.credits_remaining !== undefined && currentUser){
+      currentUser.credits = body.credits_remaining;
+      currentUser.credits_used = (currentUser.credits_used || 0) + (body.cost || 0);
+      renderAuthbar();
+      if($("#profile-overlay").classList.contains("show")) renderProfile();
+    }
     lastDownloadUrl = download_url;
     const player = $("#player");
     player.src = API + preview_url;
@@ -513,18 +743,25 @@ function drawWave(){
 })();
 
 /* ---------- boot ---------- */
-(function showAuthError(){
-  const err = new URLSearchParams(location.search).get("auth_error");
+(function showBootMessages(){
+  const params = new URLSearchParams(location.search);
+  const err = params.get("auth_error");
+  const purchase = params.get("purchase");
+  const st = $("#synth-status");
   if(err){
-    const st = $("#synth-status");
     st.textContent = decodeURIComponent(err); st.className = "status err";
-    history.replaceState(null, "", location.pathname);
+  }else if(purchase === "success"){
+    st.textContent = "Payment received — credits added to your account."; st.className = "status ok";
+  }else if(purchase === "cancelled"){
+    st.textContent = "Checkout cancelled — no charge was made."; st.className = "status";
   }
+  if(err || purchase) history.replaceState(null, "", location.pathname);
 })();
 loadVoices();
 loadLanguages();
 loadAuthConfig();
-refreshAuth();
+// Billing config must resolve before the authbar renders so credits show.
+loadBillingConfig().then(refreshAuth);
 </script>
 </body>
 </html>

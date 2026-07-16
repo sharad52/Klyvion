@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+from dataclasses import replace
 
 from klyvion.auth.errors import (
     GoogleNotConfiguredError,
@@ -39,14 +40,22 @@ class AuthService:
         hasher: PasswordHasher,
         tokens: TokenService,
         google: GoogleOAuthClient | None = None,
+        signup_credits: int = 0,
     ) -> None:
         self._store = store
         self._hasher = hasher
         self._tokens = tokens
         self._google = google
+        self._signup_credits = signup_credits
 
     @classmethod
-    def from_settings(cls, settings: Settings, *, secret_key: str) -> "AuthService":
+    def from_settings(
+        cls,
+        settings: Settings,
+        *,
+        secret_key: str,
+        store: UserStore | None = None,
+    ) -> "AuthService":
         """Build the default service graph from ``settings``.
 
         Args:
@@ -54,6 +63,9 @@ class AuthService:
             secret_key: resolved HMAC secret for signing session tokens. The
                 caller resolves it (and warns on an ephemeral one) so the same
                 secret can also seed the session middleware.
+            store: an optional pre-built user store. Pass a shared instance so
+                the billing service mutates the *same* store (and lock);
+                defaults to a :class:`JsonUserStore` over ``settings.users_file``.
         """
         google: GoogleOAuthClient | None = None
         if settings.google_enabled:
@@ -61,11 +73,17 @@ class AuthService:
                 settings.google_client_id, settings.google_client_secret
             )
         return cls(
-            store=JsonUserStore(settings.users_file),
+            store=store or JsonUserStore(settings.users_file),
             hasher=PasswordHasher(),
             tokens=TokenService(secret_key, ttl_hours=settings.token_ttl_hours),
             google=google,
+            signup_credits=settings.signup_credits,
         )
+
+    @property
+    def store(self) -> UserStore:
+        """The backing user store (shared with the billing service)."""
+        return self._store
 
     # ------------------------------------------------------------------ #
     # Local accounts
@@ -87,9 +105,15 @@ class AuthService:
             username=username,
             provider="local",
             password_hash=self._hasher.hash(password),
+            credits=self._signup_credits,
+            credits_granted=self._signup_credits,
         )
         self._store.save(user)
-        logger.info("Registered local user '%s'.", username)
+        logger.info(
+            "Registered local user '%s' with %d starter credits.",
+            username,
+            self._signup_credits,
+        )
         return user
 
     def login(self, username: str, password: str) -> User:
@@ -108,7 +132,7 @@ class AuthService:
             or not self._hasher.verify(password, user.password_hash)
         ):
             raise InvalidCredentialsError("Incorrect username or password.")
-        return user
+        return self._ensure_starter_credits(user)
 
     # ------------------------------------------------------------------ #
     # Google accounts
@@ -139,12 +163,20 @@ class AuthService:
                 f"'{username}' already has a password account. "
                 "Log in with your password instead."
             )
+        # Preserve a returning user's balance, usage and plan; only a first-time
+        # login is granted the starter credits.
         user = User(
             username=username,
             provider="google",
             password_hash=None,
             email=profile.email,
             display_name=profile.name,
+            plan=existing.plan if existing else "free",
+            credits=existing.credits if existing else self._signup_credits,
+            credits_used=existing.credits_used if existing else 0,
+            credits_granted=(
+                existing.credits_granted if existing else self._signup_credits
+            ),
         )
         self._store.save(user)
         logger.info("Authenticated Google user '%s'.", username)
@@ -169,9 +201,38 @@ class AuthService:
         user = self._store.get(username)
         if user is None:
             raise InvalidCredentialsError("Account no longer exists.")
-        return user
+        return self._ensure_starter_credits(user)
 
     # ------------------------------------------------------------------ #
+
+    def _ensure_starter_credits(self, user: User) -> User:
+        """Grant the starter credits to an account that never received them.
+
+        Self-heals accounts created before the credit system existed (their
+        stored record has no credit fields, so they load as zero). A
+        legitimately-spent account always has ``credits_granted > 0``, so that
+        flag uniquely identifies a never-granted account and the backfill runs
+        at most once. A no-op when the signup grant is zero.
+        """
+        if self._signup_credits <= 0 or user.credits_granted > 0:
+            return user
+
+        def grant(current: User) -> User:
+            if current.credits_granted > 0:  # another request beat us to it
+                return current
+            return replace(
+                current,
+                credits=current.credits + self._signup_credits,
+                credits_granted=self._signup_credits,
+            )
+
+        granted = self._store.atomic_update(user.username, grant)
+        logger.info(
+            "Backfilled %d starter credits for pre-existing user '%s'.",
+            self._signup_credits,
+            user.username,
+        )
+        return granted
 
     @staticmethod
     def _normalize_username(username: str) -> str:

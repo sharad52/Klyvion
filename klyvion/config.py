@@ -40,6 +40,20 @@ class Settings:
         public_base_url: externally reachable base URL (e.g.
             ``https://klyvion.example.com``) used to build the Google OAuth
             redirect URI. If empty, it is derived from the incoming request.
+        billing_enabled: master switch for the token-credit system. When
+            ``False`` (the default), synthesis is open and unmetered exactly as
+            before. When ``True``, every synthesis requires a logged-in user
+            and debits credits, and out-of-credit callers get HTTP 402.
+        signup_credits: credits granted to a brand-new account on registration.
+        tokens_per_char: credits charged per character of synthesized text.
+        stripe_secret_key: Stripe API secret (``sk_test_...`` in development,
+            ``sk_live_...`` in production). When empty, purchasing is disabled
+            and the UI hides its buy buttons even if billing is enabled.
+        stripe_publishable_key: Stripe publishable key exposed to the browser.
+        stripe_webhook_secret: signing secret used to verify Stripe webhook
+            payloads (``whsec_...``). Obtain it from the Stripe dashboard or
+            from ``stripe listen`` during local development.
+        currency: ISO currency code used for checkout, e.g. ``usd``.
     """
 
     engine: str = field(default_factory=lambda: _env("ENGINE", "xtts"))
@@ -63,6 +77,30 @@ class Settings:
     public_base_url: str = field(
         default_factory=lambda: _env("PUBLIC_BASE_URL", "").rstrip("/")
     )
+    billing_enabled: bool = field(
+        default_factory=lambda: _env("BILLING_ENABLED", "0") == "1"
+    )
+    signup_credits: int = field(
+        default_factory=lambda: int(_env("SIGNUP_CREDITS", "5000"))
+    )
+    tokens_per_char: int = field(
+        default_factory=lambda: int(_env("TOKENS_PER_CHAR", "1"))
+    )
+    stripe_secret_key: str = field(
+        default_factory=lambda: _env("STRIPE_SECRET_KEY", "")
+    )
+    stripe_publishable_key: str = field(
+        default_factory=lambda: _env("STRIPE_PUBLISHABLE_KEY", "")
+    )
+    stripe_webhook_secret: str = field(
+        default_factory=lambda: _env("STRIPE_WEBHOOK_SECRET", "")
+    )
+    currency: str = field(default_factory=lambda: _env("CURRENCY", "usd").lower())
+
+    @property
+    def stripe_enabled(self) -> bool:
+        """True when a Stripe secret key is configured (purchasing is live)."""
+        return bool(self.stripe_secret_key)
 
     @property
     def voices_dir(self) -> Path:
