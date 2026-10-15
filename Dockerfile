@@ -1,7 +1,7 @@
 # Klyvion — production image (CPU inference)
 # Build:  docker build -t klyvion .
 # Run:    docker run -p 8000:8000 -v klyvion-data:/data klyvion
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # ffmpeg: decode user-uploaded MP3/FLAC samples; libsndfile: soundfile backend
 RUN apt-get update && apt-get install -y --no-install-recommends \
